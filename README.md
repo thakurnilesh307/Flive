@@ -20,8 +20,14 @@ One server polls the data provider and broadcasts to every connected browser,
 so the number of viewers never affects API usage. Browsers never call the
 provider directly.
 
-Currently the server polls the OpenSky `/states/all` endpoint every 30 s
-(via `poll_logan.py`). Switching live data to adsb.lol is planned.
+The server polls [adsb.fi open data](https://github.com/adsbfi/opendata) every
+5 s for aircraft within 40 nm of Logan and logs a snapshot every 15 s. adsb.fi,
+adsb.lol and similar aggregators share readsb's JSON format, so `adsb_feed.py`
+works with any of them by changing `ADSB_URL` (and `ADSB_API_KEY` if needed).
+
+Why adsb.fi: adsb.lol was the original plan, but without a key it allows 500
+requests per day, and polling every 5 s needs about 17,000. adsb.fi's public
+endpoint allows 1 request per second without a key.
 
 ## Run it locally
 
@@ -29,23 +35,20 @@ Requires Python 3.11.
 
 ```powershell
 python -m pip install -r requirements.txt
-copy .env.example .env      # then fill in your OpenSky API client, optional
+copy .env.example .env      # optional: defaults work without any keys
 python -m uvicorn server:app
 ```
 
 Open http://127.0.0.1:8000.
 
-Without OpenSky credentials the poller runs anonymously with much tighter rate
-limits. Don't run `poll_logan.py` and the server at the same time; both poll
-and log, which doubles credit usage.
-
 ## Files
 
 | File | Purpose |
 | --- | --- |
-| `server.py` | FastAPI app: background poller, WebSocket broadcast, serves the map |
-| `poll_logan.py` | OpenSky poller (OAuth2 client credentials); also runs standalone as a logger |
-| `static/index.html` | Leaflet map with rotated aircraft icons and data tags |
+| `server.py` | FastAPI app: 5 s poller with backoff, 15 s logging, WebSocket broadcast |
+| `adsb_feed.py` | Fetches readsb-format JSON and converts it to Flive's snapshot format (SI units) |
+| `static/index.html` | Live aircraft table sorted by distance (map coming in step 2) |
+| `poll_logan.py` | Retired OpenSky poller; its OAuth2 code will be reused for nightly arrival checks |
 | `.env.example` | Template for local secrets (`.env` is gitignored) |
 
 ## Roadmap
@@ -56,3 +59,8 @@ and log, which doubles credit usage.
 4. Arrival/departure detection per flight (runway, touchdown/liftoff time)
 5. Scheduler: predicted landing sequence vs. actual, checked nightly against OpenSky arrivals
 6. Always-on deployment
+
+## Data
+
+Live positions: [adsb.fi](https://adsb.fi) open data, a community network of
+volunteer ADS-B receivers.

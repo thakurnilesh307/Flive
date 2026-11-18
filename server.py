@@ -1,14 +1,11 @@
 """
-Flive server: polls OpenSky once, broadcasts to every connected browser.
+Flive server: polls the ADS-B provider once, broadcasts to every connected browser.
 
   python -m pip install -r requirements.txt
-  (credentials come from .env, see .env.example)
   python -m uvicorn server:app
   -> open http://127.0.0.1:8000
 
-Needs poll_logan.py in the same folder (reuses its poll_once).
-Don't run poll_logan.py at the same time: this server logs too,
-and running both doubles your credit usage.
+Live data comes from adsb_feed.py (adsb.fi by default, see .env.example).
 """
 import asyncio
 import json
@@ -23,7 +20,12 @@ from fastapi.responses import FileResponse
 HERE = Path(__file__).parent
 load_dotenv(HERE / ".env")  # before importing modules that read env vars
 
-from poll_logan import POLL_SECONDS, poll_once  # noqa: E402
+from adsb_feed import RateLimited, poll_once  # noqa: E402
+
+POLL_SECONDS = 5        # provider allows 1 req/s; 5s is plenty for a live map
+LOG_SECONDS = 15        # log less often than we poll: OneDrive folder, big files
+MAX_BACKOFF = 300
+
 LOG = HERE / f"logan_{time.strftime('%Y%m%d_%H%M')}.jsonl"
 
 latest = None                 # most recent snapshot, sent to new viewers
@@ -39,21 +41,38 @@ async def broadcast(snap):
             clients.discard(ws)   # browser went away mid-send
 
 
+def backoff(failures):
+    """10, 20, 40 ... capped at MAX_BACKOFF seconds."""
+    return min(MAX_BACKOFF, POLL_SECONDS * 2 ** failures)
+
+
 async def poller():
     global latest
+    failures = 0
+    last_logged = 0.0
     while True:
+        delay = POLL_SECONDS
         try:
             # poll_once uses blocking requests, so run it off the event loop
             snap = await asyncio.to_thread(poll_once)
-            if snap:
-                latest = snap
+            failures = 0
+            latest = snap
+            if snap["fetched_at"] - last_logged >= LOG_SECONDS - 0.5:
                 with LOG.open("a") as f:
                     f.write(json.dumps(snap) + "\n")
-                await broadcast(snap)
-                print(f"{len(snap['aircraft'])} aircraft -> {len(clients)} viewer(s)")
+                last_logged = snap["fetched_at"]
+            await broadcast(snap)
+            print(f"{len(snap['aircraft'])} aircraft -> {len(clients)} viewer(s)")
+        except RateLimited as e:
+            # Failed requests count against the quota too, so never retry fast.
+            failures += 1
+            delay = max(e.retry_after or 0, backoff(failures))
+            print(f"Rate limited, waiting {delay}s")
         except Exception as e:
-            print(f"Poll failed: {e}")
-        await asyncio.sleep(POLL_SECONDS)
+            failures += 1
+            delay = backoff(failures)
+            print(f"Poll failed ({e}), retrying in {delay}s")
+        await asyncio.sleep(delay)
 
 
 @asynccontextmanager
@@ -75,7 +94,7 @@ async def index():
 async def ws_endpoint(ws: WebSocket):
     await ws.accept()
     clients.add(ws)
-    if latest:                        # don't make new viewers wait 30s
+    if latest:                        # don't make new viewers wait for the next poll
         await ws.send_text(json.dumps(latest))
     try:
         while True:

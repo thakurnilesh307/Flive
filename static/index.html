@@ -29,6 +29,8 @@
   th:first-child, td:first-child { text-align: left; }
   th { color: var(--muted); font-weight: 500; }
   tr.ground td { color: var(--muted); }
+  #credit { color: var(--muted); font-size: .85rem; margin-top: 1rem; }
+  #credit a { color: inherit; }
 </style>
 </head>
 <body>
@@ -43,6 +45,7 @@
     <tbody id="rows"></tbody>
   </table>
 </div>
+<p id="credit">Data: <a href="https://adsb.fi" rel="noopener">adsb.fi</a> open data</p>
 
 <script>
 const KBOS = [42.3656, -71.0096];

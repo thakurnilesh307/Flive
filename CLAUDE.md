@@ -7,7 +7,7 @@ deployed publicly with a blog post about how it was built.
 ## Architecture
 
 ```
-adsb.lol --(every 5s)--> server.py (FastAPI) --(WebSocket /ws)--> browser map
+adsb.fi --(every 5s)--> server.py (FastAPI) --(WebSocket /ws)--> browser
                            |
                            +-- keeps latest snapshot in memory
                            +-- logs a snapshot every 15s to logan_*.jsonl
@@ -15,17 +15,19 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
 ```
 
 - **One poller, many viewers.** Only the server talks to data providers. The
-  browser never calls adsb.lol or OpenSky directly. Keep it this way.
-- `adsb_lol.py` - polls adsb.lol (40 nm radius around KBOS, no key) and converts
-  to the snapshot format below. Handles 429 with backoff.
-- `server.py` - FastAPI app: background poller task, WebSocket broadcast, serves
+  browser never calls adsb.fi or OpenSky directly. Keep it this way.
+- `adsb_feed.py` - polls a readsb-format API (adsb.fi by default, 40 nm radius
+  around KBOS, no key), sanitizes and converts to the snapshot format below.
+  Raises `RateLimited` on 429. Provider is set by `ADSB_URL` / `ADSB_API_KEY`.
+- `server.py` - FastAPI app: background poller task (5s poll, 15s log,
+  exponential backoff on 429 and errors), WebSocket broadcast, serves
   `static/index.html`.
-- `static/index.html` - Leaflet map, CARTO tiles, rotated plane icons, ATC-style
-  data tags (callsign / altitude in hundreds of ft + climb arrow / groundspeed),
-  dead reckoning between updates, stale aircraft fade out.
+- `static/index.html` - currently a live table sorted by distance (textContent
+  only). Planned: Leaflet map, CARTO tiles, rotated plane icons, ATC-style
+  data tags, dead reckoning between updates, stale aircraft fade out.
 - `poll_logan.py` - old OpenSky state-vector logger. Retired for live data; its
   OAuth2 token code is reusable for the OpenSky flights endpoints.
-- `explore.py` - pandas/matplotlib analysis of the JSONL logs.
+- `explore.py` - (planned) pandas/matplotlib analysis of the JSONL logs.
 
 ## Snapshot format (do not change field names without updating all consumers)
 
@@ -43,8 +45,13 @@ Units are SI internally (meters, m/s). Convert to ft/kt/fpm only for display.
 
 ## Data source rules
 
-- adsb.lol: free, keyless, dynamic rate limits. Poll no faster than every 5s,
-  send a descriptive User-Agent, always keep 429 backoff.
+- adsb.fi open data (live source): free, keyless, 1 req/s per IP; failed
+  requests (4xx incl. 429) count toward the limit. Poll no faster than every
+  5s, send a descriptive User-Agent, always keep backoff, credit adsb.fi on the
+  page. Reportedly personal/non-commercial use only.
+- adsb.lol: same JSON format, but only 500 req/day without a key (1,000 adhoc,
+  7,200 feeder). Usable as a fallback via `ADSB_URL` + `ADSB_API_KEY` at a
+  matching slower interval, not at 5s.
 - OpenSky: OAuth2 client credentials only (env vars `OPENSKY_CLIENT_ID`,
   `OPENSKY_CLIENT_SECRET`). Use only for `/flights/arrival` and
   `/flights/departure` (previous day only, nightly batch, ~30 credits/query,
