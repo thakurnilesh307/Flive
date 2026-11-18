@@ -86,6 +86,8 @@ async def poller():
 @asynccontextmanager
 async def lifespan(app):
     task = asyncio.create_task(poller())
+    # Load the LLM in the background so the first question isn't a cold start.
+    asyncio.create_task(asyncio.to_thread(backend.warm_up))
     yield
     task.cancel()
 

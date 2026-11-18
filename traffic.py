@@ -122,8 +122,10 @@ def derive(a, api_time):
         "vertical_speed_fpm": None if vs is None or a.get("on_ground") else int(round(vs / 10) * 10),
         "track_deg": None if _num(a.get("track_deg")) is None else int(round(a["track_deg"])) % 360,
         "distance_nm": None if dist is None else round(dist, 1),
-        "direction_from_kbos": side,
-        "straight_line_minutes": minutes,
+        # Where the plane is now relative to Logan; NOT where it came from.
+        "current_position": f"{side} of KBOS" if side else ("at KBOS" if has_pos else None),
+        # Named so the model can't easily mistake it for an ETA.
+        "earliest_possible_minutes_to_kbos": minutes,
         "squawk": a.get("squawk"),
         "seconds_since_signal": seen,
     }
