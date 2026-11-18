@@ -37,7 +37,7 @@ export default function DetailPanel({ d, serverNow, onClose }: Props) {
         <div className="hero-sub">
           {[a.registration, category].filter(Boolean).join(" · ") || "No registration data"}
         </div>
-        <div className="hero-note">Aircraft photos coming soon</div>
+        <div className="hero-note">No photo yet</div>
       </div>
 
       <div className="detail-status">
@@ -58,8 +58,8 @@ export default function DetailPanel({ d, serverNow, onClose }: Props) {
         <RunwayIcon size={30} className="predict-icon" />
         <div>
           <div className="muted small">Predicted landing</div>
-          <div className="predict-title">Runway &amp; ETA coming soon</div>
-          <div className="muted small">Arrives with the landing scheduler</div>
+          <div className="predict-title">Not built yet</div>
+          <div className="muted small">My landing scheduler will fill this in</div>
         </div>
       </div>
 

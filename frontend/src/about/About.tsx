@@ -1,124 +1,39 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Logo, PlaneGlyph, SparkIcon } from "../components/icons";
+import { Logo } from "../components/icons";
 
 const REPO = "https://github.com/thakurnilesh307/Flive";
 
 const SECTIONS = [
-  ["what", "What you're looking at"],
+  ["what", "The map"],
   ["data", "Where the data comes from"],
-  ["pipeline", "Signal to screen"],
-  ["scaling", "Scaling to the whole world"],
-  ["smooth", "Why planes glide"],
-  ["status", "Guessing what a plane is doing"],
-  ["ask-flive", "Ask Flive, the AI"],
-  ["roadmap", "The prediction roadmap"],
-  ["privacy", "Privacy & fair use"],
-  ["stack", "Built with"],
+  ["pipeline", "How it gets to your screen"],
+  ["scaling", "Going worldwide"],
+  ["smooth", "Why the planes glide"],
+  ["status", "How the labels are guessed"],
+  ["ask-flive", "Ask Flive"],
+  ["roadmap", "What I'm working on next"],
+  ["privacy", "Privacy and fair use"],
+  ["stack", "What it's built with"],
   ["faq", "FAQ"],
   ["glossary", "Glossary"],
 ] as const;
 
-function Section({ id, kicker, title, children }: { id: string; kicker: string; title: string; children: ReactNode }) {
+function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
     <section id={id} className="doc-section">
-      <p className="kicker">{kicker}</p>
       <h2>{title}</h2>
       {children}
     </section>
   );
 }
 
-/** Collapsible technical detail, so the plain-language story reads on its own. */
-function Dev({ children, title = "For developers" }: { children: ReactNode; title?: string }) {
+/** Collapsible technical detail, so the main text reads fine without it. */
+function Dev({ children, title = "Technical details" }: { children: ReactNode; title?: string }) {
   return (
     <details className="dev">
-      <summary><span className="dev-tag">&lt;/&gt;</span>{title}</summary>
+      <summary>{title}</summary>
       <div className="dev-body">{children}</div>
     </details>
-  );
-}
-
-function PipelineDiagram() {
-  const box = (x: number, label: string, sub: string, accent = false) => (
-    <g transform={`translate(${x} 0)`}>
-      <rect width="150" height="78" rx="12" className={accent ? "d-box d-accent" : "d-box"} />
-      <text x="75" y="34" className="d-title">{label}</text>
-      <text x="75" y="56" className="d-sub">{sub}</text>
-    </g>
-  );
-  const arrow = (x: number, label: string) => (
-    <g transform={`translate(${x} 39)`}>
-      <line x1="4" y1="0" x2="46" y2="0" className="d-line" markerEnd="url(#arrow)" />
-      <text x="25" y="-8" className="d-small">{label}</text>
-    </g>
-  );
-  return (
-    <figure className="diagram">
-      <svg viewBox="0 0 860 120" role="img" aria-label="Aircraft broadcast to volunteer receivers, adsb.fi aggregates, the Flive server polls every 5 seconds and pushes to browsers">
-        <defs>
-          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-            <path d="M0 0 10 5 0 10z" className="d-head" />
-          </marker>
-        </defs>
-        <g transform="translate(5 20)">
-          {box(0, "Aircraft", "ADS-B radio, 1090 MHz")}
-          {arrow(150, "radio")}
-          {box(200, "Receivers", "volunteers' antennas")}
-          {arrow(350, "internet")}
-          {box(400, "adsb.fi", "combines all feeds")}
-          {arrow(550, "every 5 s")}
-          {box(600, "Flive server", "one poller", true)}
-        </g>
-        <g transform="translate(755 59)">
-          <line x1="0" y1="0" x2="40" y2="0" className="d-line" markerEnd="url(#arrow)" />
-          <text x="18" y="-12" className="d-small">live push</text>
-          <text x="54" y="6" className="d-title" textAnchor="start">You</text>
-        </g>
-      </svg>
-      <figcaption>Every visitor shares the same feed: the server asks adsb.fi once, then pushes the result to everyone.</figcaption>
-    </figure>
-  );
-}
-
-function AskDiagram() {
-  return (
-    <figure className="diagram">
-      <svg viewBox="0 0 760 210" role="img" aria-label="Your question goes to the Flive server, the language model asks for tools, the server runs them on live data, and the model writes an answer from the results">
-        <defs>
-          <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-            <path d="M0 0 10 5 0 10z" className="d-head" />
-          </marker>
-        </defs>
-        <rect x="10" y="66" width="140" height="78" rx="12" className="d-box" />
-        <text x="80" y="100" className="d-title">You</text>
-        <text x="80" y="122" className="d-sub">"What's landing next?"</text>
-
-        <rect x="300" y="66" width="160" height="78" rx="12" className="d-box d-accent" />
-        <text x="380" y="100" className="d-title">Flive server</text>
-        <text x="380" y="122" className="d-sub">runs tools on live data</text>
-
-        <rect x="600" y="10" width="150" height="70" rx="12" className="d-box" />
-        <text x="675" y="40" className="d-title">Language model</text>
-        <text x="675" y="61" className="d-sub">local, via Ollama</text>
-
-        <rect x="600" y="130" width="150" height="70" rx="12" className="d-box" />
-        <text x="675" y="160" className="d-title">Live snapshot</text>
-        <text x="675" y="181" className="d-sub">aircraft in memory</text>
-
-        <line x1="152" y1="95" x2="296" y2="95" className="d-line" markerEnd="url(#arrow2)" />
-        <text x="224" y="86" className="d-small">1 question</text>
-        <line x1="296" y1="118" x2="152" y2="118" className="d-line" markerEnd="url(#arrow2)" />
-        <text x="224" y="136" className="d-small">5 answer</text>
-
-        <line x1="462" y1="80" x2="596" y2="45" className="d-line" markerEnd="url(#arrow2)" />
-        <text x="520" y="50" className="d-small">2 "call landing_sequence"</text>
-        <line x1="462" y1="128" x2="596" y2="162" className="d-line" markerEnd="url(#arrow2)" />
-        <text x="520" y="168" className="d-small">3 run tool</text>
-        <line x1="596" y1="62" x2="462" y2="96" className="d-line d-dash" markerEnd="url(#arrow2)" />
-        <text x="560" y="96" className="d-small">4 results → model writes reply</text>
-      </svg>
-      <figcaption>The model never browses the web or answers from memory. It can only ask Flive's server for specific facts.</figcaption>
-    </figure>
   );
 }
 
@@ -149,29 +64,22 @@ export default function About() {
         <a className="about-brand" href="/"><Logo size={30} /><span>Flive</span></a>
         <nav className="about-top-links">
           <a href={REPO} target="_blank" rel="noopener noreferrer">GitHub</a>
-          <a className="btn-primary small" href="/">Open live map</a>
+          <a className="btn-primary small" href="/">Back to the map</a>
         </nav>
       </header>
 
-      <div className="hero-block">
-        <div className="hero-copy">
-          <p className="kicker">About the project</p>
-          <h1>Live air traffic around Boston Logan, explained.</h1>
-          <p className="lede">
-            Flive shows every plane broadcasting its position within about 40 nautical miles of Boston Logan
-            airport, updated every few seconds. This page explains where that data comes from, how the map
-            works, and how the built-in AI answers questions, in plain English first and with technical detail
-            for developers underneath.
-          </p>
-          <div className="hero-actions">
-            <a className="btn-primary" href="/"><PlaneGlyph size={18} rotate={60} /> Open the live map</a>
-            <a className="btn-ghost" href="#ask-flive"><SparkIcon size={17} /> How the AI works</a>
-          </div>
-          <p className="audience">
-            <span className="tag tag-plain">Plain English</span> sections read on their own.
-            {" "}<span className="tag tag-dev">&lt;/&gt; For developers</span> boxes open the code-level details.
-          </p>
-        </div>
+      <div className="intro">
+        <h1>About Flive</h1>
+        <p>
+          Flive is a live map of the planes around Boston Logan (and, if you zoom out, the rest of the world). I built
+          it on top of an older project of mine, a runway scheduling simulator in Python with a little Pygame radar
+          screen. The simulator only ever had made-up planes, and I wanted to see how it would do against real ones.
+          That meant I needed real, live traffic first, and this is that part.
+        </p>
+        <p>
+          This page is my write-up of how it works. Each section starts with the normal explanation. If you want the
+          code-level stuff, open the &quot;Technical details&quot; boxes.
+        </p>
       </div>
 
       <div className="doc-layout">
@@ -183,62 +91,63 @@ export default function About() {
         </nav>
 
         <main className="doc">
-          <Section id="what" kicker="The map" title="What you're looking at">
+          <Section id="what" title="The map">
             <p>
-              Each <b>plane icon</b> is a real aircraft, pointed in the direction it's moving. Grey, smaller icons are
-              planes on the ground at Logan. Click any plane (or a row in the list) to see its airline, aircraft type,
-              altitude, speed and a dashed trail of where it has been since you opened the page.
+              Every plane icon is a real aircraft, pointed the way it&apos;s moving. The smaller grey ones are on the
+              ground at Logan. Click a plane (or a row in the list at the bottom) and you get its airline, aircraft type,
+              altitude, speed, and a dashed trail of where it&apos;s been since you opened the page.
             </p>
+            <p>The colours are my guess at what each plane is doing:</p>
             <ul className="legend">
-              <li><span className="dot green" /> <b>On approach</b>: close to Logan, low and descending toward it.</li>
-              <li><span className="dot blue" /> <b>Inbound</b>: further out, descending and heading toward Logan.</li>
-              <li><span className="dot amber" /> <b>Departing</b>: climbing out and heading away.</li>
-              <li><span className="dot violet" /> <b>En route</b>: flying nearby but not obviously arriving or leaving.</li>
-              <li><span className="dot grey" /> <b>On ground / taxiing</b>: on the airport surface.</li>
+              <li><span className="dot green" /> <b>On approach</b>: close to Logan, low, and coming down toward it.</li>
+              <li><span className="dot blue" /> <b>Inbound</b>: further out, descending, and heading for Logan.</li>
+              <li><span className="dot amber" /> <b>Departing</b>: climbing and heading away.</li>
+              <li><span className="dot violet" /> <b>En route</b>: in the air nearby but not clearly arriving or leaving.</li>
+              <li><span className="dot grey" /> <b>On ground / taxiing</b>: on the airport.</li>
             </ul>
             <p>
-              Zoom out and the map becomes a <b>globe with every tracked aircraft on Earth</b>. Planes near Boston update
-              every 5 seconds. Everywhere else updates less often (about every 90 seconds) and glides in between, so the
-              whole world stays moving without overloading the free data services.
+              They really are guesses, based on position and movement, not flight plans. I explain the rules further down
+              in <a href="#status">how the labels are guessed</a>.
             </p>
             <p>
-              These labels are <b>educated guesses</b> from each plane&apos;s position and motion, not official flight
-              plans. The section on <a href="#status">guessing what a plane is doing</a> explains exactly how they&apos;re made.
+              If you zoom out far enough the map turns into a globe with every plane I can get data for. Boston updates
+              every 5 seconds. The rest of the world only updates about every 90 seconds (free data has limits), so in
+              between the planes are moved forward on their own so nothing looks frozen.
             </p>
           </Section>
 
-          <Section id="data" kicker="The data" title="Where the data comes from">
+          <Section id="data" title="Where the data comes from">
             <p>
-              Most aircraft carry a transponder that broadcasts <b>ADS-B</b> messages: short radio packets with the plane&apos;s
-              identity, GPS position, altitude, speed and direction, sent several times a second. Since 2020 the US has
-              required it in most controlled airspace, which covers nearly all airliners around Boston.
+              Most planes have a transponder that sends out <b>ADS-B</b> messages several times a second. Each message
+              has the plane&apos;s ID, GPS position, altitude, speed and direction. Since 2020 it&apos;s been required in most
+              US controlled airspace, so basically every airliner around Boston has it.
             </p>
             <p>
-              Anyone with a cheap antenna can receive these signals. Thousands of volunteers do, and share what they hear
-              with community networks. Flive uses <a href="https://adsb.fi" target="_blank" rel="noopener noreferrer">adsb.fi</a>,
-              one of those networks, which combines the volunteers&apos; feeds into one live picture. When a plane&apos;s own
-              position isn&apos;t available, receivers can sometimes work it out from tiny differences in when the signal
-              arrives at different antennas (called multilateration, or MLAT).
+              The cool part is that anyone with a cheap antenna can pick these up, and thousands of volunteers do and share
+              what they receive. I use <a href="https://adsb.fi" target="_blank" rel="noopener noreferrer">adsb.fi</a>,
+              which combines all those volunteer feeds into one live picture. If a plane isn&apos;t sending its own position,
+              receivers can sometimes work it out from tiny differences in when the signal reaches each antenna (that&apos;s
+              called multilateration, or MLAT).
             </p>
             <p>
-              For the rest of the world, Flive uses the <a href="https://opensky-network.org" target="_blank" rel="noopener noreferrer">OpenSky Network</a>,
-              a research network that offers a whole-planet snapshot in one request. It allows a limited number of requests per
-              day, which is why the worldwide view refreshes about every 90 seconds instead of every 5.
+              For the rest of the world I use the <a href="https://opensky-network.org" target="_blank" rel="noopener noreferrer">OpenSky Network</a>,
+              a research network that can give you the whole planet in one request. You only get a certain number of requests
+              per day though, which is why the world view refreshes every 90 seconds and not every 5.
             </p>
             <p>
-              What Flive does <b>not</b> have: where a flight came from or is going, gate, delays or passenger information.
-              Those come from airline schedules, not from the radio signal.
+              Things Flive doesn&apos;t know: where a flight came from or where it&apos;s going, gates, delays, or anything about
+              passengers. That comes from airline schedules, not the radio signal.
             </p>
             <Dev>
               <p>
                 <code>adsb_feed.py</code> polls <code>opendata.adsb.fi/api/v3/lat/…/lon/…/dist/40</code> every 5 s with a
-                descriptive User-Agent. adsb.fi allows 1 request/second per IP and counts failed requests against that
-                limit, so errors and HTTP 429 trigger exponential backoff (10 s → 300 s, honoring <code>Retry-After</code>).
+                descriptive User-Agent. adsb.fi allows 1 request per second per IP and counts failed requests too, so on
+                errors or a 429 the server backs off exponentially (10 s up to 300 s, and it respects <code>Retry-After</code>).
               </p>
               <p>
-                The response is readsb JSON. It&apos;s converted to Flive&apos;s snapshot format with SI units internally
-                (metres, m/s); feet, knots and fpm exist only for display. Callsigns, registrations and type codes are
-                stripped to <code>[A-Z0-9-]</code> and length-capped on the server, because all provider data is treated as
+                The response is readsb JSON. I convert it to my own snapshot format and keep everything in SI units
+                (metres, m/s). Feet, knots and fpm only exist in the UI. Callsigns, registrations and type codes get stripped
+                to <code>[A-Z0-9-]</code> and length-capped on the server, because I treat everything from the provider as
                 untrusted.
               </p>
               <pre>{`{"fetched_at": 1794650000.0, "api_time": 1794650000.0, "aircraft": [
@@ -247,67 +156,70 @@ export default function About() {
    "track_deg": 41.0, "vert_rate_ms": -3.8, "category": 4,
    "aircraft_type": "A320", "registration": "N123JB", ...}]}`}</pre>
               <p>
-                Why not adsb.lol (the original plan)? Its keyless tier allows 500 requests/day, and a 5 s poll needs
-                ~17,000. adsb.fi and adsb.lol share the readsb format, so switching is one environment variable
+                I originally planned to use adsb.lol, but without a key it&apos;s 500 requests a day, and polling every 5 s
+                needs about 17,000. adsb.fi uses the same format, so switching back is just an environment variable
                 (<code>ADSB_URL</code>, plus <code>ADSB_API_KEY</code> if needed).
               </p>
             </Dev>
           </Section>
 
-          <Section id="pipeline" kicker="Architecture" title="From radio signal to your screen">
-            <PipelineDiagram />
+          <Section id="pipeline" title="How it gets to your screen">
+            <pre className="sketch">{`plane --radio--> volunteer antennas --> adsb.fi
+                                           |
+                              Flive server asks every 5 s
+                                           |
+                     pushes the same update to every open page`}</pre>
             <p>
-              Your browser never talks to adsb.fi directly. Flive&apos;s server fetches the data once every 5 seconds and pushes
-              it to every open page over a live connection. That&apos;s fairer to the volunteer network, because a thousand
-              visitors cost it the same as one.
+              Your browser never talks to adsb.fi itself. My server grabs the data once every 5 seconds and pushes it to
+              everyone who has the page open. I did it this way so I&apos;m not hammering a volunteer-run service: a thousand
+              people looking at the map costs adsb.fi the same as one.
             </p>
             <Dev>
               <ul>
-                <li><code>server.py</code> (FastAPI) runs one background poller task and keeps the latest snapshot in memory.</li>
-                <li>Snapshots are broadcast over a WebSocket at <code>/ws</code>. New viewers get the latest snapshot immediately.</li>
-                <li>Every third snapshot (every 15 s) is appended to <code>logan_*.jsonl</code>. These logs are the training and evaluation data for the prediction work below.</li>
-                <li>The React + TypeScript frontend (Vite) is served as static files from the same server.</li>
-                <li><b>Worldwide:</b> a second, slower poller covers the rest of the planet. See <a href="#scaling">Scaling to the whole world</a>.</li>
+                <li><code>server.py</code> (FastAPI) runs one background poller and keeps the latest snapshot in memory.</li>
+                <li>Snapshots go out over a WebSocket at <code>/ws</code>. Someone who just opened the page gets the latest one straight away.</li>
+                <li>Every third snapshot (so every 15 s) is appended to a <code>logan_*.jsonl</code> log. Those logs are the data for the prediction work further down.</li>
+                <li>The frontend is React + TypeScript (Vite), served as static files by the same server.</li>
+                <li>There&apos;s a second, slower poller for the rest of the world. More on that in <a href="#scaling">going worldwide</a>.</li>
               </ul>
             </Dev>
           </Section>
 
-          <Section id="scaling" kicker="Scale" title="Scaling to the whole world">
+          <Section id="scaling" title="Going worldwide">
             <p>
-              Flive began as a circle around Boston with about 15 planes. Zoom out now and it shows every plane the OpenSky
-              Network can see, usually 5,000 to 6,000 even at the quietest hour, and more when the world is busy. Five
-              choices made that possible on free data and one small server:
+              At first Flive was just a circle around Boston with maybe 15 planes in it. Now if you zoom out you see every
+              plane OpenSky can see, which is usually 5,000 to 6,000 even late at night, and more during the day. Getting
+              that to work on free data and one small server came down to a few decisions:
             </p>
             <ol className="steps">
               <li>
-                <b>Two speeds.</b> Boston updates every 5 seconds from adsb.fi. The rest of the world updates about every
-                90 seconds from OpenSky, which allows a limited number of whole-planet requests per day. Everything about
-                landings at Logan stays on the fast feed.
+                <b>Boston fast, everything else slow.</b> Boston comes from adsb.fi every 5 seconds. The world comes from
+                OpenSky about every 90 seconds, because whole-planet requests are limited per day. Anything to do with
+                landings at Logan only uses the fast feed.
               </li>
               <li>
-                <b>One fetch for everyone.</b> Only Flive&apos;s server asks for data, so a thousand visitors cost the data
-                networks the same as one.
+                <b>One fetch, shared by everyone.</b> Only my server asks for data, same idea as above.
               </li>
               <li>
-                <b>You only get what you&apos;re looking at.</b> Your browser tells the server which part of the map is on
-                screen, and the server sends just those planes in a compact format. Zoomed all the way out it sends an even
-                sample of 2,000 planes across every region, and the plane you&apos;ve selected is always included.
+                <b>You only get what&apos;s on your screen.</b> The page tells the server which part of the map you&apos;re
+                looking at, and the server only sends those planes, in a compact format. When you&apos;re zoomed all the way out
+                it sends an even sample of 2,000 from all over, and always includes the plane you&apos;ve clicked on.
               </li>
               <li>
-                <b>Drawn by your graphics card.</b> Thousands of planes are drawn directly on the GPU instead of as
-                individual page elements, so panning stays smooth. Zoomed out, the map becomes a globe.
+                <b>The GPU draws the planes.</b> Thousands of planes as separate page elements would crawl, so they&apos;re drawn
+                straight on the graphics card instead. That&apos;s what keeps panning around smooth.
               </li>
               <li>
-                <b>An AI that knows the world.</b> Ask Flive can answer about any airport or city, using a free database of
-                3,265 airports, and it says when worldwide numbers are incomplete.
+                <b>Ask Flive knows about other airports.</b> It can answer about any airport or city using a free database of
+                3,265 airports, and it tells you when the worldwide numbers are incomplete.
               </li>
             </ol>
             <p>
-              <b>What it can&apos;t do (yet):</b> the volunteer receivers behind OpenSky cover Europe and North America well,
-              but oceans and much of Africa, Asia and South America much less. Real worldwide totals are higher than Flive
-              shows, and planes outside Boston can be up to a minute and a half old before the map glides them forward.
+              The limits: the volunteer receivers behind OpenSky cover Europe and North America well, but oceans and big
+              parts of Africa, Asia and South America not so much. So the real worldwide number is higher than what you
+              see, and planes outside Boston can be up to a minute and a half old before the map moves them forward.
             </p>
-            <Dev title="For developers: the numbers">
+            <Dev title="Technical details: the numbers">
               <table className="rules">
                 <thead><tr><th></th><th>Boston</th><th>World</th></tr></thead>
                 <tbody>
@@ -315,179 +227,182 @@ export default function About() {
                   <tr><td>Refresh</td><td>5 s</td><td>90 s with an account, 900 s anonymous</td></tr>
                   <tr><td>Per fetch</td><td>~5 KB, ~15 aircraft</td><td>~675 KB, ~5,200 aircraft</td></tr>
                   <tr><td>Logged</td><td>every 15 s (~30 MB/day)</td><td>never (would be ~4 GB/day at 15 s)</td></tr>
-                  <tr><td>Glide</td><td>0.5 s tick, capped at 20 s</td><td>1 s tick, capped at 120 s</td></tr>
+                  <tr><td>Glide</td><td>redrawn ~30×/s, capped at 20 s, corrections blended over 1.2 s</td><td>redrawn 4×/s, capped at 120 s, corrections blended over 2.5 s</td></tr>
                 </tbody>
               </table>
               <ul>
-                <li><b>Index:</b> 5° grid built in ~16 ms for ~5,000 aircraft; viewport queries well under 1 ms; antimeridian handled.</li>
-                <li><b>Protocol:</b> the page sends <code>{"{"}"type":"view","bbox":[w,s,e,n],"keep":[icao24]{"}"}</code>; the server replies at once and after every world refresh with rows from a box padded 25%, as arrays plus a field list (4.6× smaller than objects, ~70 bytes per aircraft), capped at 2,000 with round-robin thinning across cells (airborne first). Whole world ≈ 140 KB vs ≈ 630 KB as objects; a region ≈ 10 KB.</li>
-                <li><b>Rendering:</b> MapLibre symbol layers with one SDF plane image recolored by feature properties; two GeoJSON sources so Boston and world can tick at different rates.</li>
-                <li><b>Swappable source:</b> <code>world_feed.py</code> is one module; a receiver-fed account (8,000 credits, ~45 s) or a paid whole-world API would replace it without touching the protocol or the map.</li>
+                <li><b>Index:</b> a 5° grid, built in ~16 ms for ~5,000 aircraft. Viewport queries take well under 1 ms and handle the antimeridian.</li>
+                <li><b>Protocol:</b> the page sends <code>{"{"}"type":"view","bbox":[w,s,e,n],"keep":[icao24]{"}"}</code>. The server answers right away and after every world refresh with rows from a box padded by 25%, sent as arrays plus a field list (4.6× smaller than objects, ~70 bytes per aircraft). It caps at 2,000 with round-robin thinning across grid cells, airborne first. The whole world is about 140 KB this way vs about 630 KB as objects; a region is about 10 KB.</li>
+                <li><b>Rendering:</b> MapLibre symbol layers using one SDF plane image that gets recoloured by feature properties. Boston and world are separate GeoJSON sources so they can tick at different rates.</li>
+                <li><b>Swapping the source:</b> all of it lives in <code>world_feed.py</code>, so a receiver-fed account (8,000 credits, ~45 s) or a paid API could replace it without touching the protocol or the map.</li>
               </ul>
             </Dev>
           </Section>
 
-          <Section id="smooth" kicker="Tracking" title="Why planes glide instead of jumping">
+          <Section id="smooth" title="Why the planes glide">
             <p>
-              New positions arrive every 5 seconds, which would make planes hop across the map. Between updates, Flive
-              moves each plane forward along its current direction at its current speed, a technique sailors and pilots
-              call <b>dead reckoning</b>. When the next real position arrives, the plane snaps to it. The correction is
-              usually too small to notice.
+              New positions come in every 5 seconds, so without doing anything the planes would jump around. In between
+              updates I move each plane forward in the direction it&apos;s going at the speed it&apos;s going. Pilots and sailors
+              call this <b>dead reckoning</b>. My guess is never perfect though, so when the next real position shows up the
+              plane is a little off. Instead of snapping it there, I slide it over to the right spot over about a second.
             </p>
             <p>
-              If a plane goes quiet (no signal for 30 seconds), its icon fades. When it disappears from the feed, it&apos;s removed.
+              If a plane hasn&apos;t been heard from in 30 seconds, it fades out. Once it drops out of the feed, it&apos;s removed.
             </p>
             <Dev>
               <p>
-                <code>MapView.tsx</code> runs a 500 ms timer. For each airborne aircraft it computes elapsed time since the
-                position&apos;s own timestamp (<code>time_position</code>), corrected for browser/server clock skew, and
-                projects the position using flat-earth maths (accurate over a few seconds). Projection is capped at 20 s so a
-                stale aircraft never drifts far. Trails are kept in the browser only (last ~10 minutes per aircraft).
+                <code>MapView.tsx</code> runs one <code>requestAnimationFrame</code> loop that redraws Boston planes about 30 times a second and world planes 4 times a second (there can be 2,000 of those). For each plane in the air it works out how long it&apos;s been since
+                that position&apos;s own timestamp (<code>time_position</code>), corrected for clock differences between the
+                browser and server, and projects it forward with flat-earth maths (fine over a few seconds). It never projects
+                more than 20 s, so a stale plane can&apos;t wander off. When a new report arrives, <code>makeSmoother</code> stores the gap between where the plane was drawn and its new estimate and eases that gap to zero (1.2 s for Boston, 2.5 s for the world). Gaps over 0.3° are treated as real jumps and snap. Trails only live in the browser (about the last 10 minutes
+                per plane).
               </p>
             </Dev>
           </Section>
 
-          <Section id="status" kicker="Estimates" title="How Flive guesses what a plane is doing">
+          <Section id="status" title="How the labels are guessed">
             <p>
-              The radio signal doesn&apos;t say &quot;I&apos;m about to land&quot;. So Flive looks at three things: how far the plane is
-              from Logan, whether it&apos;s pointed toward or away from the airport, and whether it&apos;s climbing or descending.
-              Simple rules turn those into a label.
+              The signal doesn&apos;t say &quot;I&apos;m about to land&quot;, so I look at three things: how far the plane is from
+              Logan, whether it&apos;s pointed toward or away from it, and whether it&apos;s climbing or descending. A few simple
+              rules turn that into a label:
             </p>
             <table className="rules">
-              <thead><tr><th>Label</th><th>Rule of thumb</th></tr></thead>
+              <thead><tr><th>Label</th><th>Rule</th></tr></thead>
               <tbody>
                 <tr><td><span className="dot green" /> On approach</td><td>Within 15 nm, below 5,000 ft, pointed at Logan, and descending (or already below 2,000 ft)</td></tr>
                 <tr><td><span className="dot blue" /> Inbound</td><td>Within 40 nm, below 18,000 ft, pointed at Logan, descending</td></tr>
-                <tr><td><span className="dot amber" /> Departing</td><td>Within 25 nm, climbing, and pointed away from Logan (or still very close to it)</td></tr>
-                <tr><td><span className="dot violet" /> En route</td><td>Anything airborne that doesn&apos;t match the above</td></tr>
+                <tr><td><span className="dot amber" /> Departing</td><td>Within 25 nm, climbing, and pointed away from Logan (or still really close to it)</td></tr>
+                <tr><td><span className="dot violet" /> En route</td><td>Anything in the air that doesn&apos;t match the above</td></tr>
               </tbody>
             </table>
             <p>
-              Rules like this are quick and easy to explain, but they get fooled. A small plane heading for nearby Hanscom
-              or Norwood airport can look &quot;inbound&quot; to Logan. Replacing these guesses with real detection of landings and
-              take-offs is the next big step (see <a href="#roadmap">the roadmap</a>).
+              Rules like this are easy to explain, but they get fooled. A small plane going to Hanscom or Norwood can look
+              like it&apos;s inbound to Logan. Replacing these with actual landing and take-off detection is my next big step
+              (see <a href="#roadmap">what I&apos;m working on next</a>).
             </p>
             <Dev>
               <p>
-                Implemented in <code>frontend/src/status.ts</code> (map) and mirrored in <code>traffic.py</code> (AI tools) so both
-                agree. &quot;Pointed at Logan&quot; means the aircraft&apos;s track is within 45° of the bearing to KBOS; &quot;away&quot; means more
-                than 120° off. Descending/climbing means a vertical rate beyond ±250 fpm.
+                The rules are in <code>frontend/src/status.ts</code> (for the map) and copied into <code>traffic.py</code> (for
+                the AI) so the two always agree. &quot;Pointed at Logan&quot; means the track is within 45° of the bearing to
+                KBOS, &quot;away&quot; means more than 120° off, and climbing or descending means a vertical rate past ±250 fpm.
               </p>
             </Dev>
           </Section>
 
-          <Section id="ask-flive" kicker="The AI" title="Ask Flive: an AI that only answers from live data">
+          <Section id="ask-flive" title="Ask Flive">
             <p>
-              Ask Flive lets you ask questions in normal language, such as &quot;What&apos;s landing next?&quot;, &quot;How busy is Heathrow?&quot; or
-              &quot;Where is DLH400 right now?&quot;
-              It&apos;s powered by a <b>large language model</b> (LLM): software trained on huge amounts of text to predict and write
-              language. On their own, LLMs are confident guessers. Ask one about planes over Boston and it will happily make
-              something up.
+              Ask Flive is a chat where you can ask stuff like &quot;What&apos;s landing next?&quot;, &quot;How busy is Heathrow?&quot;
+              or &quot;Where is DLH400 right now?&quot;. It runs on a <b>large language model</b> (LLM), which is software trained
+              on a huge amount of text to predict what comes next. The problem with LLMs is that they&apos;ll confidently make
+              things up. Ask one about planes over Boston and it&apos;ll just invent some.
             </p>
             <p>
-              So Ask Flive doesn&apos;t let the model answer from memory. Instead it uses <b>tool calling</b>: the model can only
-              ask Flive&apos;s server for specific facts (&quot;give me the landing order&quot;), the server looks them up in the live
-              data, and the model writes its reply from those results. If the data doesn&apos;t contain the answer, for example
-              where a flight is going, it&apos;s instructed to say Flive doesn&apos;t know.
+              So I don&apos;t let it answer from memory. It uses <b>tool calling</b> instead, which goes like this:
             </p>
-            <AskDiagram />
+            <ol>
+              <li>You ask a question.</li>
+              <li>The model asks my server for a specific thing, like &quot;give me the landing order&quot;.</li>
+              <li>The server looks that up in the live data and sends back the result.</li>
+              <li>The model writes its answer using only that result.</li>
+            </ol>
             <p>
-              Under each answer you&apos;ll see which lookups it used (&quot;Checked landing order&quot;), so you can tell it came from the
-              data. It&apos;s still an AI, so it can occasionally phrase something wrong. The map is the source of truth.
+              If the data doesn&apos;t have the answer (like where a flight is headed), it&apos;s told to say it doesn&apos;t know.
+              Under each answer you can see which lookups it did, like &quot;Checked landing order&quot;. It&apos;s still an AI
+              and can word things wrong sometimes, so trust the map over the chat.
             </p>
             <p>
-              The model runs <b>locally</b>, on the same machine as Flive&apos;s server, through an open-source tool called
-              <a href="https://ollama.com" target="_blank" rel="noopener noreferrer"> Ollama</a>. Your questions aren&apos;t sent
-              to an outside AI company, and visitors don&apos;t need to install anything.
+              The model runs <b>locally</b> on the same machine as the server, using an open-source tool called
+              {" "}<a href="https://ollama.com" target="_blank" rel="noopener noreferrer">Ollama</a>. Your questions don&apos;t go
+              to an AI company, and you don&apos;t need to install anything to use it.
             </p>
-            <Dev title="For developers: tools, loop and guardrails">
-              <p>The model (default <code>qwen3:8b</code>, set by <code>OLLAMA_MODEL</code>) gets seven tools, defined in <code>ask.py</code>: four for Boston and three worldwide:</p>
+            <Dev title="Technical details: tools, the loop, and guardrails">
+              <p>The model (<code>qwen3:8b</code> by default, set with <code>OLLAMA_MODEL</code>) gets seven tools from <code>ask.py</code>, four for Boston and three for the world:</p>
               <table className="rules">
                 <thead><tr><th>Tool</th><th>Returns</th></tr></thead>
                 <tbody>
-                  <tr><td><code>traffic_summary</code></td><td>Counts: total, airborne, on ground, by estimated status</td></tr>
-                  <tr><td><code>list_aircraft(status?, airline?, limit?)</code></td><td>Aircraft sorted by distance, with altitude, speed, distance, direction from KBOS</td></tr>
-                  <tr><td><code>get_aircraft(query)</code></td><td>One aircraft anywhere by callsign, registration or ICAO hex (Boston first, then worldwide), or <code>found: false</code></td></tr>
-                  <tr><td><code>landing_sequence</code></td><td>Arriving aircraft at Logan ordered by straight-line time at current speed (a lower bound, not an ETA)</td></tr>
-                  <tr><td><code>aircraft_near(place, radius_nm?, airline?)</code></td><td>Count and nearest aircraft around any airport or city; Boston feed overrides world data near Logan</td></tr>
-                  <tr><td><code>find_airport(query)</code></td><td>Airport by code, name or city, from OurAirports (public domain, 3,265 airports with scheduled service)</td></tr>
-                  <tr><td><code>world_summary</code></td><td>Worldwide total, airborne, counts by region, data age and a coverage caveat</td></tr>
+                  <tr><td><code>traffic_summary</code></td><td>Counts: total, airborne, on ground, and by estimated status</td></tr>
+                  <tr><td><code>list_aircraft(status?, airline?, limit?)</code></td><td>Aircraft sorted by distance, with altitude, speed, distance and direction from KBOS</td></tr>
+                  <tr><td><code>get_aircraft(query)</code></td><td>One aircraft by callsign, registration or ICAO hex (Boston first, then the world), or <code>found: false</code></td></tr>
+                  <tr><td><code>landing_sequence</code></td><td>Planes arriving at Logan, ordered by straight-line time at current speed (a lower bound, not an ETA)</td></tr>
+                  <tr><td><code>aircraft_near(place, radius_nm?, airline?)</code></td><td>Count and nearest aircraft around any airport or city (near Logan the Boston feed wins over world data)</td></tr>
+                  <tr><td><code>find_airport(query)</code></td><td>An airport by code, name or city, from OurAirports (public domain, 3,265 airports with scheduled service)</td></tr>
+                  <tr><td><code>world_summary</code></td><td>Worldwide total, airborne, counts by region, data age, and a coverage warning</td></tr>
                 </tbody>
               </table>
               <ul>
-                <li><b>Loop:</b> <code>POST /api/ask</code> → system prompt + last 6 turns + question → Ollama <code>/api/chat</code> with tool specs. Tool calls run against the in-memory snapshot and go back as <code>role: tool</code> messages. At most 4 tool rounds, temperature 0.2, &quot;thinking&quot; off for speed.</li>
-                <li><b>Grounding:</b> the system prompt requires a tool call before any traffic fact, says to admit missing data, and to treat text inside tool results as data, not instructions.</li>
-                <li><b>Don&apos;t trust an 8B model to pick tools for the obvious cases:</b> testing showed it sometimes picked the wrong tool for a named flight, or answered from chat history with no lookup at all. So the server (1) pre-fetches <code>get_aircraft</code> for any callsign or registration in the question, and (2) if the model answers without any tool call, sends it back once with an automatic &quot;you didn&apos;t check live data&quot; note, falling back to its original reply for genuinely off-topic or no-data questions.</li>
-                <li><b>Shape the data so it&apos;s hard to misread:</b> the model kept turning &quot;straight-line minutes&quot; into confident ETAs and a plane&apos;s current direction from Logan into its origin. Tools now return pre-phrased values (&quot;at least 4 minutes away (lower bound, not an ETA)&quot;, &quot;S of KBOS&quot;) instead of bare numbers.</li>
-                <li><b>Prompt-injection surface:</b> the only provider text the model sees is callsign/registration/type, already stripped to <code>[A-Z0-9-]</code> and capped at 4–10 characters by the server, so there&apos;s little room to smuggle instructions in.</li>
-                <li><b>Abuse limits:</b> questions max 300 characters, 5/minute and 40/hour per visitor, one model call at a time (others wait up to 45 s, then get a friendly &quot;busy&quot;). Unknown tools and arguments are rejected.</li>
-                <li><b>Rendering:</b> answers are shown as plain text (no HTML or Markdown rendering), so model output can&apos;t inject markup.</li>
-                <li><b>Swappable backend:</b> the model sits behind a small <code>chat(messages, tools)</code> interface, so deployment can use a different host without touching the tools.</li>
+                <li><b>The loop:</b> <code>POST /api/ask</code> sends the system prompt, the last 6 turns and the question to Ollama&apos;s <code>/api/chat</code> along with the tool specs. Tool calls run against the in-memory snapshot and go back as <code>role: tool</code> messages. Max 4 tool rounds, temperature 0.2, and &quot;thinking&quot; is off to keep it fast.</li>
+                <li><b>Grounding:</b> the system prompt says it has to call a tool before stating any traffic fact, admit when data is missing, and treat text inside tool results as data, not instructions.</li>
+                <li><b>Not trusting an 8B model with the obvious cases:</b> in testing it sometimes picked the wrong tool for a named flight, or just answered from chat history without looking anything up. So the server (1) automatically runs <code>get_aircraft</code> for any callsign or registration in the question, and (2) if the model answers without calling a tool, sends it back once with a &quot;you didn&apos;t check the live data&quot; note. If it still doesn&apos;t, I keep its first reply, since that usually means the question wasn&apos;t about traffic.</li>
+                <li><b>Making the data hard to misread:</b> it kept turning &quot;straight-line minutes&quot; into confident ETAs, and a plane&apos;s direction from Logan into where it came from. Now the tools return pre-worded values (&quot;at least 4 minutes away (lower bound, not an ETA)&quot;, &quot;S of KBOS&quot;) instead of raw numbers.</li>
+                <li><b>Prompt injection:</b> the only provider text the model ever sees is callsign, registration and type, which the server already strips to <code>[A-Z0-9-]</code> and caps at 4 to 10 characters. There isn&apos;t much room to sneak instructions in.</li>
+                <li><b>Abuse limits:</b> questions are capped at 300 characters, 5 per minute and 40 per hour per visitor, and only one model call runs at a time (others wait up to 45 s and then get a &quot;busy&quot; message). Unknown tools and arguments are rejected.</li>
+                <li><b>Rendering:</b> answers are shown as plain text, no HTML or Markdown, so the model can&apos;t inject markup.</li>
+                <li><b>Swappable backend:</b> the model sits behind a small <code>chat(messages, tools)</code> function, so when I deploy I can use a different host without touching the tools.</li>
               </ul>
             </Dev>
           </Section>
 
-          <Section id="roadmap" kicker="What's next" title="The prediction roadmap: model vs. reality">
+          <Section id="roadmap" title="What I'm working on next">
             <p>
-              Flive grew out of an earlier project: a Python simulator that schedules planes onto runways the way air traffic
-              control does. The goal is to point that kind of model at real Logan traffic and measure how well it predicts what
-              actually happens.
+              Like I said at the top, Flive came out of my runway scheduling simulator, which plans the order planes land in
+              kind of like air traffic control does. The real goal is to point that kind of model at actual Logan traffic and
+              see how close it gets. The plan:
             </p>
             <ol className="steps">
               <li>
-                <b>Detect real arrivals and departures.</b> Follow each plane through the logged snapshots, spot the moment it
-                touches down or lifts off (its &quot;on ground&quot; signal flips), and work out which runway it used from its heading
-                and position. This replaces the rule-of-thumb labels with observed events.
+                <b>Detect real arrivals and departures.</b> Follow each plane through the logged snapshots, catch the moment
+                it touches down or takes off (its &quot;on ground&quot; flag flips), and figure out which runway it used from its
+                heading and position. That replaces the guessed labels with things that actually happened.
               </li>
               <li>
-                <b>Predict the landing sequence.</b> For planes still in the air, predict the order they&apos;ll land in and when.
-                The simplest predictor is distance divided by speed. Smarter ones learn from history, such as how long planes
-                at a given distance and altitude usually take to land, given which runways are in use.
+                <b>Predict the landing order.</b> For planes still in the air, predict which order they&apos;ll land in and when.
+                The simplest version is distance divided by speed. A better one would learn from history, like how long planes
+                at a certain distance and altitude usually take to land given which runways are in use.
               </li>
               <li>
-                <b>Score it against reality.</b> Every night, compare predictions with what actually happened, using both
-                Flive&apos;s own detected landings and official arrival records from OpenSky. Results are reported honestly,
-                including where the model is wrong.
+                <b>Check it against what really happened.</b> Every night, compare the predictions with real landings, both
+                the ones Flive detected and the official arrival records from OpenSky. I&apos;ll post the results, including the
+                parts where it&apos;s wrong.
               </li>
             </ol>
-            <Dev title="For developers: data and evaluation plan">
+            <Dev title="Technical details: data and how I'll evaluate it">
               <ul>
-                <li><b>Training data:</b> the 15 s JSONL snapshot logs, segmented into per-flight tracks keyed by <code>icao24</code> + callsign.</li>
-                <li><b>Event labels:</b> touchdown/liftoff from <code>on_ground</code> transitions; runway assignment by matching final-approach track and position to Logan&apos;s runway headings and thresholds.</li>
-                <li><b>Baseline:</b> straight-line time-to-go (distance / groundspeed). Any learned model has to beat it to count.</li>
-                <li><b>Candidate learned model:</b> regression of time-to-touchdown on distance, altitude, speed, vertical rate, bearing and active runway configuration, validated on held-out days.</li>
-                <li><b>Metrics:</b> mean absolute error of predicted landing time (minutes) at fixed horizons (e.g. 5, 10, 20 min out), plus sequence agreement (rank correlation of predicted vs. actual order).</li>
+                <li><b>Training data:</b> the 15 s JSONL logs, split into per-flight tracks keyed by <code>icao24</code> + callsign.</li>
+                <li><b>Event labels:</b> touchdown and liftoff from <code>on_ground</code> changes; runway from matching the final-approach track and position to Logan&apos;s runway headings and thresholds.</li>
+                <li><b>Baseline:</b> straight-line time to go (distance / groundspeed). Anything learned has to beat this to count.</li>
+                <li><b>Learned model idea:</b> regression of time-to-touchdown on distance, altitude, speed, vertical rate, bearing and active runway configuration, tested on held-out days.</li>
+                <li><b>Metrics:</b> mean absolute error of predicted landing time (minutes) at fixed horizons like 5, 10 and 20 minutes out, plus how well the predicted order matches the real one (rank correlation).</li>
                 <li><b>Ground truth:</b> nightly OpenSky <code>/flights/arrival</code> and <code>/departure</code> queries for the previous day (OAuth2 client credentials, separate credit budget).</li>
               </ul>
             </Dev>
           </Section>
 
-          <Section id="privacy" kicker="Responsibility" title="Privacy & fair use">
+          <Section id="privacy" title="Privacy and fair use">
             <p>
-              <b>About you:</b> Flive has no accounts, no cookies, no ads and no analytics. Ask Flive conversations live only
-              in your browser tab. The server uses your question to answer it and doesn&apos;t save it.
+              <b>You:</b> there are no accounts, cookies, ads or analytics. Ask Flive chats only exist in your browser tab.
+              The server uses your question to answer it and doesn&apos;t save it.
             </p>
             <p>
-              <b>About aircraft:</b> everything shown is broadcast openly by the aircraft themselves and already public on
-              many flight-tracking sites. Flive shows only what&apos;s in the signal, which is typically the airline callsign,
-              registration and aircraft type, with no owner or passenger information.
+              <b>The planes:</b> everything here is broadcast openly by the aircraft and is already on plenty of flight-tracking
+              sites. Flive only shows what&apos;s in the signal, which is usually the airline callsign, registration and aircraft
+              type. Nothing about owners or passengers.
             </p>
             <p>
-              <b>About the data network:</b> adsb.fi is run by volunteers. Flive polls gently (once every 5 seconds for all
-              visitors combined), backs off when asked to, and credits adsb.fi on every page.
+              <b>adsb.fi:</b> it&apos;s run by volunteers, so I try to be a good user. The server asks once every 5 seconds for
+              everyone combined, backs off when told to, and credits adsb.fi on every page.
             </p>
           </Section>
 
-          <Section id="stack" kicker="Under the hood" title="Built with">
-            <div className="stack-grid">
-              <div><h3>Data</h3><p>adsb.fi open data (Boston, 5 s), OpenSky Network (worldwide, ~90 s; arrivals for validation planned)</p></div>
-              <div><h3>Server</h3><p>Python 3.11, FastAPI, WebSockets, requests, python-dotenv</p></div>
-              <div><h3>Frontend</h3><p>React, TypeScript, Vite, MapLibre GL (globe + GPU aircraft layers), Inter</p></div>
-              <div><h3>Map</h3><p>OpenFreeMap vector tiles, © OpenMapTiles, © OpenStreetMap contributors, restyled navy</p></div>
-              <div><h3>AI</h3><p>Ollama running an open-weights LLM locally, with tool calling</p></div>
-              <div><h3>Source</h3><p><a href={REPO} target="_blank" rel="noopener noreferrer">github.com/thakurnilesh307/Flive</a></p></div>
-            </div>
-            <Dev title="For developers: run it yourself">
+          <Section id="stack" title="What it's built with">
+            <ul>
+              <li><b>Data:</b> adsb.fi open data (Boston, every 5 s) and the OpenSky Network (world, about every 90 s; arrival records planned for checking predictions)</li>
+              <li><b>Server:</b> Python 3.11, FastAPI, WebSockets, requests, python-dotenv</li>
+              <li><b>Frontend:</b> React, TypeScript, Vite, MapLibre GL, the Inter font</li>
+              <li><b>Map:</b> OpenFreeMap vector tiles, © OpenMapTiles, © OpenStreetMap contributors, recoloured to dark navy</li>
+              <li><b>AI:</b> Ollama running an open-weights LLM locally, with tool calling</li>
+              <li><b>Code:</b> <a href={REPO} target="_blank" rel="noopener noreferrer">github.com/thakurnilesh307/Flive</a></li>
+            </ul>
+            <Dev title="Run it yourself">
               <pre>{`python -m pip install -r requirements.txt
 cd frontend; npm install; npm run build; cd ..
 # optional, for Ask Flive:
@@ -497,46 +412,47 @@ python -m uvicorn server:app      # http://127.0.0.1:8000`}</pre>
             </Dev>
           </Section>
 
-          <Section id="faq" kicker="Questions" title="FAQ">
+          <Section id="faq" title="FAQ">
             <div className="faq">
               <details><summary>Why can&apos;t I find a specific flight?</summary>
-                <p>It may be outside the 40 nm circle, not yet in range of a volunteer receiver, or not broadcasting ADS-B (some military and older aircraft don&apos;t). Flive also shows planes by their radio callsign (like JBU470), which can differ from the flight number on your ticket.</p></details>
+                <p>It might be outside the 40 nm circle, not near a volunteer receiver yet, or not broadcasting ADS-B at all (some military and older planes don&apos;t). Flive also shows planes by their radio callsign (like JBU470), which isn&apos;t always the flight number on your ticket.</p></details>
               <details><summary>Why does a landing plane sometimes show a negative altitude?</summary>
-                <p>The altitude shown is barometric: it&apos;s worked out from air pressure assuming a &quot;standard&quot; day. When the real air pressure at Boston is high, planes near the runway can read slightly below zero. It&apos;s normal, and it&apos;s the same altitude pilots and controllers use.</p></details>
-              <details><summary>Is this the same as what air traffic control sees?</summary>
-                <p>No. Controllers use radar and certified systems with complete coverage. Flive uses volunteer receivers and is for curiosity and learning only. Never use it for navigation or safety decisions.</p></details>
+                <p>The altitude is barometric, meaning it&apos;s calculated from air pressure assuming a &quot;standard&quot; day. When the real pressure in Boston is high, planes near the runway can read a bit below zero. That&apos;s normal, and it&apos;s the same altitude pilots and controllers use.</p></details>
+              <details><summary>Is this what air traffic control sees?</summary>
+                <p>No. Controllers use radar and certified systems with full coverage. Flive runs on volunteer receivers and is just for curiosity and learning. Please don&apos;t use it for navigation or anything safety-related.</p></details>
               <details><summary>How accurate are the &quot;inbound&quot; and &quot;on approach&quot; labels?</summary>
-                <p>Usually right for airliners near Logan, sometimes wrong for small planes heading to nearby airports. They&apos;re estimates from simple rules, and replacing them with real detection is the next roadmap step.</p></details>
+                <p>Usually right for airliners near Logan, sometimes wrong for small planes going to nearby airports. They come from simple rules, and replacing them with real detection is the next thing on my list.</p></details>
               <details><summary>Why is Ask Flive sometimes offline or slow?</summary>
-                <p>It runs a full language model on Flive&apos;s own machine instead of a paid cloud service. If the model isn&apos;t running, the chat says so and the map keeps working. Answers can take a few seconds, longer if several people ask at once.</p></details>
+                <p>It runs a full language model on my own machine instead of a paid cloud service. If the model isn&apos;t running, the chat tells you and the map still works. Answers take a few seconds, longer if a few people ask at once.</p></details>
             </div>
           </Section>
 
-          <Section id="glossary" kicker="Words" title="Glossary">
+          <Section id="glossary" title="Glossary">
             <dl className="glossary">
-              <dt>ADS-B</dt><dd>Automatic Dependent Surveillance–Broadcast: aircraft radio messages with identity, position and motion.</dd>
+              <dt>ADS-B</dt><dd>Automatic Dependent Surveillance–Broadcast: the radio messages planes send with their ID, position and movement.</dd>
               <dt>Callsign</dt><dd>The name a flight uses on the radio, e.g. JBU470 = JetBlue flight 470.</dd>
-              <dt>Registration</dt><dd>The aircraft&apos;s &quot;licence plate&quot;, e.g. N828JB. US registrations start with N.</dd>
-              <dt>ICAO hex</dt><dd>A permanent 24-bit address built into the aircraft&apos;s transponder, shown as six characters like a1b2c3.</dd>
-              <dt>Squawk</dt><dd>A four-digit code assigned by air traffic control so controllers can identify the plane.</dd>
-              <dt>Groundspeed</dt><dd>Speed over the ground in knots (1 knot ≈ 1.15 mph). Wind makes it differ from airspeed.</dd>
+              <dt>Registration</dt><dd>The plane&apos;s &quot;licence plate&quot;, e.g. N828JB. US ones start with N.</dd>
+              <dt>ICAO hex</dt><dd>A permanent 24-bit address built into the transponder, shown as six characters like a1b2c3.</dd>
+              <dt>Squawk</dt><dd>A four-digit code air traffic control gives a plane so they can identify it.</dd>
+              <dt>Groundspeed</dt><dd>Speed over the ground in knots (1 knot ≈ 1.15 mph). Wind makes it different from airspeed.</dd>
               <dt>Track</dt><dd>The direction the plane is actually moving over the ground, in degrees (0° = north, 90° = east).</dd>
-              <dt>Nautical mile (nm)</dt><dd>1.15 statute miles, or 1.852 km. Aviation&apos;s standard distance unit.</dd>
-              <dt>MLAT</dt><dd>Multilateration: locating a plane from when its signal reaches several receivers.</dd>
-              <dt>KBOS</dt><dd>The ICAO code for Boston Logan International Airport.</dd>
-              <dt>LLM</dt><dd>Large language model: AI that generates text. Ask Flive uses one with tool calling.</dd>
-              <dt>Tool calling</dt><dd>Letting an AI request specific data from a program instead of answering from memory.</dd>
+              <dt>Nautical mile (nm)</dt><dd>1.15 regular miles, or 1.852 km. The standard distance unit in aviation.</dd>
+              <dt>MLAT</dt><dd>Multilateration: finding a plane from when its signal reaches several receivers.</dd>
+              <dt>KBOS</dt><dd>The ICAO code for Boston Logan.</dd>
+              <dt>LLM</dt><dd>Large language model, the kind of AI that writes text. Ask Flive uses one with tool calling.</dd>
+              <dt>Tool calling</dt><dd>Letting an AI ask a program for specific data instead of answering from memory.</dd>
             </dl>
           </Section>
 
           <footer className="about-foot">
             <p>
-              Flive is a personal portfolio project. Aircraft data from <a href="https://adsb.fi" target="_blank" rel="noopener noreferrer">adsb.fi</a>.
+              Flive is a personal project. Aircraft data from <a href="https://adsb.fi" target="_blank" rel="noopener noreferrer">adsb.fi</a> and
+              the <a href="https://opensky-network.org" target="_blank" rel="noopener noreferrer">OpenSky Network</a>.
               Map <a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener noreferrer">OpenMapTiles</a>
               {" "}© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors.
               Not for navigation.
             </p>
-            <a className="btn-primary small" href="/">Back to the live map</a>
+            <a className="btn-primary small" href="/">Back to the map</a>
           </footer>
         </main>
       </div>

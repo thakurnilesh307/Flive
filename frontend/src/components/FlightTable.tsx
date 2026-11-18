@@ -44,7 +44,7 @@ export default function FlightTable({ tab, onTab, counts, rows, searching, selec
             </button>
           ))
         )}
-        <span className="tabs-note muted small">Live estimates · schedules coming soon</span>
+        <span className="tabs-note muted small">Statuses are my best guess from position and speed</span>
         <button className="icon-btn ghost collapse" onClick={onToggle} aria-label={open ? "Collapse list" : "Expand list"}>
           <ChevronIcon size={20} className={open ? "" : "flip"} />
         </button>

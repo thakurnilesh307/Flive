@@ -26,8 +26,9 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
 - `frontend/` - React + TypeScript (Vite) + MapLibre GL only (Leaflet removed).
   OpenFreeMap `dark` style recolored in `src/basemap.ts` (CARTO needs a key),
   globe projection when zoomed out. Aircraft are GPU symbol layers
-  (`local-planes` = Boston, 500 ms dead-reckoning tick; `world-planes` = world,
-  1 s tick, glide capped at 120 s) using one SDF plane image recolored by
+  (`local-planes` = Boston, redrawn ~30 fps; `world-planes` = world, 4 fps,
+  glide capped at 120 s; one requestAnimationFrame loop, and fresh reports
+  blend in over 1.2 s / 2.5 s via `makeSmoother` instead of snapping) using one SDF plane image recolored by
   feature props (sel/ground/dim/stale). MapLibre 6 needs `setWorkerUrl` with
   the worker imported via `?url`. `.app .map` selector beats MapLibre's own
   `position: relative`. `zoom` must be the top-level input of size

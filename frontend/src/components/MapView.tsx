@@ -35,8 +35,11 @@ interface Props {
 const STALE_S = 30;              // fade aircraft we haven't heard from in this long
 const MAX_EXTRAPOLATE_S = 20;    // Boston: never dead-reckon further than this
 const WORLD_EXTRAPOLATE_S = 120; // world updates are ~90 s apart; cap the glide a bit beyond that
-const LOCAL_TICK_MS = 500;
-const WORLD_TICK_MS = 1000;
+const LOCAL_FRAME_MS = 33;  // Boston planes redraw ~30 times a second (few planes, cheap)
+const WORLD_FRAME_MS = 250; // world planes redraw 4 times a second (up to 2,000 planes)
+const LOCAL_BLEND_MS = 1200; // when a real position arrives, slide to it over this long instead of snapping
+const WORLD_BLEND_MS = 2500;
+const MAX_BLEND_DEG = 0.3;   // corrections bigger than this (~18 nm) are real jumps: snap
 const STYLE_URL = "https://tiles.openfreemap.org/styles/dark";
 type FC = FeatureCollection<Geometry>;
 
@@ -62,6 +65,51 @@ function planeImage(size = 64): ImageData {
 }
 
 const empty = (): FC => ({ type: "FeatureCollection", features: [] });
+
+/**
+ * Hides the snap when a fresh position arrives. Dead reckoning puts a plane slightly
+ * off from where the next real report says it is; instead of jumping there, we
+ * remember the gap and shrink it to zero over `blendMs`.
+ */
+function makeSmoother(blendMs: number) {
+  const shown = new Map<string, LatLon>();   // where each plane was last drawn
+  const seenTp = new Map<string, number>();  // last time_position we saw per plane
+  const gap = new Map<string, { dLat: number; dLon: number; t0: number }>();
+  const ease = (t: number) => t * t * (3 - 2 * t); // smoothstep
+
+  function place(id: string, tp: number | null | undefined, est: LatLon, now: number): LatLon {
+    const prevTp = seenTp.get(id);
+    const prev = shown.get(id);
+    if (tp != null) seenTp.set(id, tp);
+    if (prev && tp != null && prevTp != null && tp !== prevTp) {
+      let dLon = prev[1] - est[1];
+      if (dLon > 180) dLon -= 360; else if (dLon < -180) dLon += 360;
+      const dLat = prev[0] - est[0];
+      if (Math.abs(dLat) < MAX_BLEND_DEG && Math.abs(dLon) < MAX_BLEND_DEG) gap.set(id, { dLat, dLon, t0: now });
+      else gap.delete(id);
+    }
+    let pos = est;
+    const g = gap.get(id);
+    if (g) {
+      const t = (now - g.t0) / blendMs;
+      if (t >= 1) gap.delete(id);
+      else {
+        const k = 1 - ease(t);
+        pos = [est[0] + g.dLat * k, est[1] + g.dLon * k];
+      }
+    }
+    shown.set(id, pos);
+    return pos;
+  }
+
+  /** Forget planes that left the feed so the maps don't grow forever. */
+  function prune(alive: Set<string>) {
+    if (shown.size <= alive.size + 100) return;
+    for (const m of [shown, seenTp, gap]) for (const id of m.keys()) if (!alive.has(id)) m.delete(id);
+  }
+
+  return { place, prune };
+}
 
 /**
  * Visible lat/lon box from the map's own pixel size: unproject a ring of points
@@ -185,14 +233,20 @@ export default function MapView(props: Props) {
     });
 
     // Build features with dead-reckoned positions.
-    const features = (list: Derived[], serverNow: number, cap: number, keepTrail: boolean) => {
+    const localSmooth = makeSmoother(LOCAL_BLEND_MS);
+    const worldSmooth = makeSmoother(WORLD_BLEND_MS);
+    const features = (list: Derived[], serverNow: number, cap: number, keepTrail: boolean, sm: ReturnType<typeof makeSmoother>) => {
       const { selectedId, dimmed } = live.current;
       const out: Feature<Point>[] = [];
       let selectedPos: LatLon | null = null;
+      const now = performance.now();
+      const alive = new Set<string>();
       for (const d of list) {
-        const pos = estimate(d, serverNow, cap);
-        if (!pos) continue;
+        const est = estimate(d, serverNow, cap);
+        if (!est) continue;
         const a = d.a;
+        alive.add(a.icao24);
+        const pos = sm.place(a.icao24, a.time_position, est, now);
         const sel = a.icao24 === selectedId;
         if (sel) selectedPos = pos;
         out.push({
@@ -206,6 +260,7 @@ export default function MapView(props: Props) {
           },
         });
       }
+      sm.prune(alive);
       if (keepTrail && selectedPos) setTrail(selectedPos);
       return { type: "FeatureCollection", features: out } as FC;
     };
@@ -223,18 +278,24 @@ export default function MapView(props: Props) {
       if (!ready.current) return;
       const { aircraft, clockSkew, selectedId } = live.current;
       const serverNow = Date.now() / 1000 + clockSkew;
-      (map.getSource("local") as GeoJSONSource).setData(features(aircraft, serverNow, MAX_EXTRAPOLATE_S, true));
+      (map.getSource("local") as GeoJSONSource).setData(features(aircraft, serverNow, MAX_EXTRAPOLATE_S, true, localSmooth));
       if (!selectedId || !aircraft.some((d) => d.a.icao24 === selectedId)) setTrail(null);
     };
     const tickWorld = () => {
       if (!ready.current) return;
       const { world, clockSkew } = live.current;
       const serverNow = Date.now() / 1000 + clockSkew;
-      (map.getSource("world") as GeoJSONSource).setData(features(world, serverNow, WORLD_EXTRAPOLATE_S, false));
+      (map.getSource("world") as GeoJSONSource).setData(features(world, serverNow, WORLD_EXTRAPOLATE_S, false, worldSmooth));
     };
     redraw.current = () => { tickLocal(); tickWorld(); };
-    const localTimer = window.setInterval(tickLocal, LOCAL_TICK_MS);
-    const worldTimer = window.setInterval(tickWorld, WORLD_TICK_MS);
+    // One animation loop. It pauses by itself when the tab is hidden.
+    let frame = 0, lastLocal = 0, lastWorld = 0;
+    const loop = (t: number) => {
+      if (t - lastLocal >= LOCAL_FRAME_MS) { lastLocal = t; tickLocal(); }
+      if (t - lastWorld >= WORLD_FRAME_MS) { lastWorld = t; tickWorld(); }
+      frame = requestAnimationFrame(loop);
+    };
+    frame = requestAnimationFrame(loop);
 
     // Report the visible area so the server sends worldwide aircraft for it.
     // Debounced: a pan fires many events; the server only needs the final view.
@@ -248,8 +309,7 @@ export default function MapView(props: Props) {
     map.on("moveend", reportView);
 
     return () => {
-      window.clearInterval(localTimer);
-      window.clearInterval(worldTimer);
+      cancelAnimationFrame(frame);
       window.clearTimeout(viewTimer);
       ready.current = false;
       map.remove();

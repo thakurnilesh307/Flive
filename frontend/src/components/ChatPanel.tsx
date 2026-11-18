@@ -95,13 +95,13 @@ export default function ChatPanel({ messages, setMessages, suggestions, onClose 
       <div className="chat-list" ref={listRef} aria-live="polite">
         {messages.length === 0 && (
           <div className="chat-intro">
-            <p>Ask about the planes on the map right now. Answers come only from Flive&apos;s live data, and it will tell you when it doesn&apos;t know.</p>
-            <a href="/about.html#ask-flive">How Ask Flive works →</a>
+            <p>Ask me about the planes on the map. It only answers from the live data, so if it doesn&apos;t know something (like where a flight is going) it should say so.</p>
+            <a href="/about.html#ask-flive">How this works →</a>
           </div>
         )}
         {offline && (
           <div className="chat-offline">
-            Ask Flive runs on a language model hosted alongside this site, and it isn&apos;t running right now. The live map still works.
+            The AI runs on my own machine, and it&apos;s not running right now. The map still works fine.
           </div>
         )}
         {messages.map((m, i) => (
