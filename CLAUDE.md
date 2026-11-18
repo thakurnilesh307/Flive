@@ -23,14 +23,18 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
 - `server.py` - FastAPI app: background poller task (5s poll, 15s log,
   exponential backoff on 429 and errors), WebSocket broadcast, serves the
   built frontend from `frontend/dist` (mounted last so `/ws` wins).
-- `frontend/` - React + TypeScript (Vite). Leaflet for markers/trail, MapLibre
-  vector basemap (OpenFreeMap `dark` style, recolored in `src/basemap.ts`;
-  CARTO now requires an API key). MapLibre 6 needs `setWorkerUrl` with the
-  worker imported via `?url`, or the worker 404s after bundling. Dead
-  reckoning between updates, stale fade, client-side trails. Status
-  (inbound/approach/departing) in `src/status.ts` is a heuristic placeholder
-  until step 4. Never put provider text into HTML strings (Leaflet divIcons
-  are static markup; tooltips use textContent). Brand: hexagon logo in
+- `frontend/` - React + TypeScript (Vite) + MapLibre GL only (Leaflet removed).
+  OpenFreeMap `dark` style recolored in `src/basemap.ts` (CARTO needs a key),
+  globe projection when zoomed out. Aircraft are GPU symbol layers
+  (`local-planes` = Boston, 500 ms dead-reckoning tick; `world-planes` = world,
+  1 s tick, glide capped at 120 s) using one SDF plane image recolored by
+  feature props (sel/ground/dim/stale). MapLibre 6 needs `setWorkerUrl` with
+  the worker imported via `?url`. `.app .map` selector beats MapLibre's own
+  `position: relative`. `zoom` must be the top-level input of size
+  expressions. MapLibre uses 512 px tiles (matters for bounds maths).
+  Status (inbound/approach/departing) in `src/status.ts` is a heuristic
+  placeholder until step 4. Never put provider text into HTML strings (hover
+  tips use Popup.setText; KBOS marker is static markup). Brand: hexagon logo in
   `src/components/icons.tsx` + `public/favicon.svg`, dark navy only.
 - `ask.py` - Ask Flive (step 3): Ollama backend behind `chat(messages, tools)`,
   4 tools over the in-memory snapshot, max 4 tool rounds, grounding system
@@ -55,8 +59,9 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   box, capped at 2000, Boston-feed aircraft removed, count from the visible box.
   Pages that never send a view never get world data.
   Plan: (1) feed + store [done], (2) viewport subscription on /ws with compact
-  format [done; UI shows "Worldwide in view" count only], (3) MapLibre-native aircraft layer replacing Leaflet (confirm with
-  user before starting), (4) Ask Flive region tools via OurAirports,
+  format [done], (3) MapLibre-native aircraft layers replacing Leaflet [done;
+  view messages may carry `keep: [icao24]` so the selected plane survives
+  thinning], (4) Ask Flive region tools via OurAirports,
   (5) About/README "scaling to the world" section.
 - `opensky_auth.py` - shared OpenSky OAuth2 token handling (thread-safe).
 - `poll_logan.py` - old OpenSky state-vector logger. Retired for live data; its

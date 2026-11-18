@@ -13,6 +13,7 @@ grid index so "which aircraft are in this map view" is cheap.
 """
 import math
 import os
+import re
 import time
 from collections import defaultdict
 
@@ -112,6 +113,18 @@ def _wrap(x):
     return ((x + 180) % 360) - 180
 
 
+_HEX = re.compile(r"^~?[0-9a-f]{6}$")
+
+
+def parse_keep(msg):
+    """Optional 'keep' list in a view message: ICAO hex ids (max 3) the client
+    wants included even if thinning would drop them, e.g. the selected plane."""
+    keep = msg.get("keep") if isinstance(msg, dict) else None
+    if not isinstance(keep, list):
+        return ()
+    return tuple(k for k in keep[:3] if isinstance(k, str) and _HEX.match(k))
+
+
 def parse_view(msg):
     """Validate a client 'view' message -> (visible, padded) boxes, or None.
     Each box is (west, south, east, north) with longitudes in -180..180
@@ -144,6 +157,7 @@ class WorldStore:
     def __init__(self):
         self.snapshot = None
         self.grid = {}
+        self.by_id = {}
         self.credits_remaining = None
         self.last_error = None
 
@@ -152,6 +166,7 @@ class WorldStore:
         for a in snap["aircraft"]:
             grid[_cell(a["lat"], a["lon"])].append(a)
         self.snapshot, self.grid = snap, dict(grid)
+        self.by_id = {a["icao24"]: a for a in snap["aircraft"]}
         self.credits_remaining = credits_remaining
         self.last_error = None
 

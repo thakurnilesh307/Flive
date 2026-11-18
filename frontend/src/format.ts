@@ -24,7 +24,8 @@ export function fmtVs(d: Derived): string {
   return `${v < 0 ? "−" : "+"}${n(Math.abs(v))} fpm`;
 }
 
-export const fmtDist = (d: Derived) => (d.distNm == null ? "–" : `${d.distNm.toFixed(1)} nm`);
+export const fmtDist = (d: Derived) =>
+  d.distNm == null ? "–" : d.distNm >= 100 ? `${n(d.distNm)} nm` : `${d.distNm.toFixed(1)} nm`;
 
 export function fmtAgo(seconds: number): string {
   if (seconds < 1) return "just now";

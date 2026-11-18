@@ -190,6 +190,11 @@ export default function About() {
               <li><span className="dot grey" /> <b>On ground / taxiing</b>: on the airport surface.</li>
             </ul>
             <p>
+              Zoom out and the map becomes a <b>globe with every tracked aircraft on Earth</b>. Planes near Boston update
+              every 5 seconds. Everywhere else updates less often (about every 90 seconds) and glides in between, so the
+              whole world stays moving without overloading the free data services.
+            </p>
+            <p>
               These labels are <b>educated guesses</b> from each plane&apos;s position and motion, not official flight
               plans. The section on <a href="#status">guessing what a plane is doing</a> explains exactly how they&apos;re made.
             </p>
@@ -207,6 +212,11 @@ export default function About() {
               one of those networks, which combines the volunteers&apos; feeds into one live picture. When a plane&apos;s own
               position isn&apos;t available, receivers can sometimes work it out from tiny differences in when the signal
               arrives at different antennas (called multilateration, or MLAT).
+            </p>
+            <p>
+              For the rest of the world, Flive uses the <a href="https://opensky-network.org" target="_blank" rel="noopener noreferrer">OpenSky Network</a>,
+              a research network that offers a whole-planet snapshot in one request. It allows a limited number of requests per
+              day, which is why the worldwide view refreshes about every 90 seconds instead of every 5.
             </p>
             <p>
               What Flive does <b>not</b> have: where a flight came from or is going, gate, delays or passenger information.
@@ -250,6 +260,8 @@ export default function About() {
                 <li>Snapshots are broadcast over a WebSocket at <code>/ws</code>. New viewers get the latest snapshot immediately.</li>
                 <li>Every third snapshot (every 15 s) is appended to <code>logan_*.jsonl</code>. These logs are the training and evaluation data for the prediction work below.</li>
                 <li>The React + TypeScript frontend (Vite) is served as static files from the same server.</li>
+                <li><b>Worldwide:</b> a second poller fetches OpenSky <code>/states/all</code> (4 credits per call; every 90 s with an account, 15 min anonymously) into an in-memory 5° grid. Each page sends its map bounds over the WebSocket and gets only the aircraft in view as compact arrays, capped at 2,000 and thinned evenly when zoomed out (whole world ≈ 160 KB instead of ≈ 700 KB). The selected plane is always included. World data is never logged.</li>
+                <li><b>Rendering:</b> MapLibre GL draws aircraft as GPU symbol layers (one recolorable SDF plane icon, rotated by track), so thousands of planes stay smooth; globe projection when zoomed out.</li>
               </ul>
             </Dev>
           </Section>
@@ -403,9 +415,9 @@ export default function About() {
 
           <Section id="stack" kicker="Under the hood" title="Built with">
             <div className="stack-grid">
-              <div><h3>Data</h3><p>adsb.fi open data (ADS-B/MLAT), OpenSky arrivals for validation (planned)</p></div>
+              <div><h3>Data</h3><p>adsb.fi open data (Boston, 5 s), OpenSky Network (worldwide, ~90 s; arrivals for validation planned)</p></div>
               <div><h3>Server</h3><p>Python 3.11, FastAPI, WebSockets, requests, python-dotenv</p></div>
-              <div><h3>Frontend</h3><p>React, TypeScript, Vite, Leaflet, MapLibre GL, Inter</p></div>
+              <div><h3>Frontend</h3><p>React, TypeScript, Vite, MapLibre GL (globe + GPU aircraft layers), Inter</p></div>
               <div><h3>Map</h3><p>OpenFreeMap vector tiles, © OpenMapTiles, © OpenStreetMap contributors, restyled navy</p></div>
               <div><h3>AI</h3><p>Ollama running an open-weights LLM locally, with tool calling</p></div>
               <div><h3>Source</h3><p><a href={REPO} target="_blank" rel="noopener noreferrer">github.com/thakurnilesh307/Flive</a></p></div>

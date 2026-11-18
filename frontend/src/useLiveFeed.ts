@@ -35,6 +35,8 @@ export interface Feed {
   world: WorldView | null;
   /** tell the server what the map shows; re-sent automatically after reconnects */
   sendView: (bbox: BBox) => void;
+  /** aircraft the server should always include in world data (the selected one), or null */
+  keepAircraft: (icao24: string | null) => void;
 }
 
 export function useLiveFeed(): Feed {
@@ -47,13 +49,25 @@ export function useLiveFeed(): Feed {
   const wsRef = useRef<WebSocket | null>(null);
   const viewRef = useRef<BBox | null>(null);
 
+  const keepRef = useRef<string | null>(null);
+
   const sendView = useCallback((bbox: BBox) => {
     viewRef.current = bbox;
     const ws = wsRef.current;
     if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "view", bbox: bbox.map((v) => Math.round(v * 1000) / 1000) }));
+      ws.send(JSON.stringify({
+        type: "view",
+        bbox: bbox.map((v) => Math.round(v * 1000) / 1000),
+        ...(keepRef.current ? { keep: [keepRef.current] } : {}),
+      }));
     }
   }, []);
+
+  const keepAircraft = useCallback((icao24: string | null) => {
+    if (keepRef.current === icao24) return;
+    keepRef.current = icao24;
+    if (viewRef.current) sendView(viewRef.current);
+  }, [sendView]);
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -129,5 +143,5 @@ export function useLiveFeed(): Feed {
     };
   }, [sendView]);
 
-  return { snapshot, connected, clockSkew, trails, world, sendView };
+  return { snapshot, connected, clockSkew, trails, world, sendView, keepAircraft };
 }

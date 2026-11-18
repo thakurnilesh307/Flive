@@ -53,12 +53,16 @@ forwards `/ws` to the server).
 
 ## Frontend
 
-React + TypeScript (Vite) with Leaflet for markers and a MapLibre vector
+React + TypeScript (Vite) with [MapLibre GL](https://maplibre.org): a vector
 basemap from [OpenFreeMap](https://openfreemap.org) (free, no API key),
-recolored to navy in `frontend/src/basemap.ts`.
+recolored to navy in `frontend/src/basemap.ts`, shown as a globe when zoomed
+out. Aircraft are GPU symbol layers (one recolorable plane icon rotated by
+track), so thousands of worldwide planes stay smooth.
 
-- Aircraft icons rotate with track and glide between 5 s updates (dead
-  reckoning from speed and track, capped at 20 s); stale aircraft fade.
+- Aircraft icons rotate with track and glide between updates (dead
+  reckoning from speed and track: Boston every 0.5 s capped at 20 s, world
+  every 1 s capped at 120 s); stale aircraft fade.
+- Search, selection and the detail panel cover worldwide aircraft in view too.
 - Selecting an aircraft shows a detail panel and a dashed trail of its
   recent positions (kept in the browser since page load).
 - "Inbound", "On approach" and "Departing" are **estimates** from distance,
@@ -85,8 +89,8 @@ for that area, capped at 2,000 and thinned evenly when zoomed out. A whole-world
 view is ~160 KB per update instead of the full ~700 KB, and a region is a few
 KB. Pages that never send a view keep getting only the Boston feed.
 
-For now the UI shows a "Worldwide in view" count. Next: move aircraft rendering
-to MapLibre (GPU) so thousands of planes stay smooth. Debug endpoints:
+The map draws them all with MapLibre on the GPU, globe view included. Next:
+Ask Flive tools for regions and airports. Debug endpoints:
 `GET /api/world/stats`, `GET /api/world?bbox=west,south,east,north`.
 
 ## Ask Flive

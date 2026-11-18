@@ -36,28 +36,18 @@ button { font: inherit; color: inherit; }
 .app { position: relative; height: 100%; overflow: hidden; }
 
 /* ---------- map ---------- */
-.map { position: absolute; inset: 0; background: var(--bg); z-index: 0; }
-.leaflet-container { font: inherit; background: var(--bg); }
-
-.ac-marker { background: none; border: 0; }
-.ac-rot { width: 28px; height: 28px; transform: rotate(var(--rot, 0deg)); transition: transform .6s ease; }
-.ac-rot svg { width: 100%; height: 100%; fill: #5aa8ff; filter: drop-shadow(0 0 4px rgba(61, 139, 255, .55)); transition: fill .2s, opacity .3s; }
-.ac-marker:hover .ac-rot svg { fill: #9fd0ff; }
-.ac-marker.ground .ac-rot { scale: .62; }
-.ac-marker.ground .ac-rot svg { fill: #7b8ba6; filter: none; }
-.ac-marker.selected .ac-rot { scale: 1.25; }
-.ac-marker.selected .ac-rot svg { fill: #bfe3ff; filter: drop-shadow(0 0 6px #3d8bff) drop-shadow(0 0 14px rgba(61, 139, 255, .8)); }
-.ac-marker.stale .ac-rot svg { opacity: .4; }
-.ac-marker.dim .ac-rot svg { opacity: .18; filter: none; }
-.ac-trail { filter: drop-shadow(0 0 4px rgba(61, 139, 255, .7)); }
-
-.ac-tip {
+/* .app prefix: MapLibre's own CSS sets .maplibregl-map { position: relative } and loads later. */
+.app .map { position: absolute; inset: 0; background: var(--bg); z-index: 0; }
+.map canvas { outline: none; }
+/* Aircraft are drawn by MapLibre layers (see MapView.tsx); only the hover tip is HTML. */
+.ac-tip { pointer-events: none; }
+.ac-tip .maplibregl-popup-content {
   background: var(--panel-solid); color: var(--text); border: 1px solid var(--border);
-  border-radius: 8px; box-shadow: var(--shadow); font-weight: 600; padding: 3px 8px;
+  border-radius: 8px; box-shadow: var(--shadow); font: 600 14px/1.4 inherit; padding: 3px 8px;
 }
-.ac-tip::before { display: none; }
+.ac-tip .maplibregl-popup-tip { display: none; }
 
-.kbos-marker { background: none; border: 0; }
+.kbos-marker { width: 0; height: 0; pointer-events: none; }
 .kbos-dot {
   position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; border-radius: 50%;
   background: var(--accent); border: 3px solid #cfe3ff; box-shadow: 0 0 0 6px rgba(61, 139, 255, .25);

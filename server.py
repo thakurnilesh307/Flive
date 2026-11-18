@@ -48,7 +48,8 @@ class Client:
 
     def __init__(self, ws: WebSocket):
         self.ws = ws
-        self.view = None              # (west, south, east, north) once the page asks for world data
+        self.view = None              # (visible, padded) boxes once the page asks for world data
+        self.keep = ()                # icao24s to always include (the page's selected plane)
         self.lock = asyncio.Lock()
 
     async def send(self, text: str):
@@ -69,14 +70,17 @@ async def broadcast(snap):
             clients.discard(c)   # browser went away mid-send
 
 
-def world_message(view):
+def world_message(view, keep=()):
     """Compact world aircraft for a client view, minus aircraft the Boston feed covers.
     `view` is (visible_box, padded_box): rows come from the padded box, the
-    count shown to the user from the visible one."""
+    count shown to the user from the visible one. `keep` ids are always added
+    (the selected plane must not vanish when a zoomed-out view is thinned)."""
     visible, padded = view
     local = {a["icao24"] for a in (latest or {}).get("aircraft", [])}
     rows, _ = world.query(*padded, limit=WORLD_VIEW_LIMIT + len(local))
     rows = [a for a in rows if a["icao24"] not in local][:WORLD_VIEW_LIMIT]
+    have = {a["icao24"] for a in rows}
+    rows += [world.by_id[k] for k in keep if k in world.by_id and k not in have and k not in local]
     visible_rows, _ = world.query(*visible, limit=10 ** 6)
     total_visible = sum(1 for a in visible_rows if a["icao24"] not in local)
     snap = world.snapshot
@@ -93,7 +97,7 @@ def world_message(view):
 async def send_world(c: Client):
     if c.view and world.snapshot:
         try:
-            await c.send(world_message(c.view))
+            await c.send(world_message(c.view, c.keep))
         except Exception:
             clients.discard(c)
 
@@ -192,7 +196,7 @@ async def ws_endpoint(ws: WebSocket):
     try:
         while True:
             text = await ws.receive_text()
-            # Only message type so far: {"type": "view", "bbox": [w, s, e, n]}.
+            # Only message type so far: {"type": "view", "bbox": [w, s, e, n], "keep": [icao24]}.
             # Pages that never send one never get world data (old pages keep working).
             if len(text) > 300:
                 continue
@@ -204,6 +208,7 @@ async def ws_endpoint(ws: WebSocket):
                 view = world_feed.parse_view(msg)
                 if view:
                     c.view = view
+                    c.keep = world_feed.parse_keep(msg)
                     await send_world(c)
     except WebSocketDisconnect:
         pass
