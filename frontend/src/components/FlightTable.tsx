@@ -3,6 +3,12 @@ import { operatorFor } from "../airlines";
 import { flightLabel, fmtAlt, fmtDist, fmtSpeed } from "../format";
 import { ChevronIcon, PlaneGlyph } from "./icons";
 import StatusPill from "./StatusPill";
+import AirlineBadge from "./AirlineBadge";
+
+function AirlineCell({ d }: { d: Derived }) {
+  const op = operatorFor(d.a.callsign, d.a.registration, d.a.operator);
+  return <span className="airline-cell"><AirlineBadge op={op} size={22} />{op.name}</span>;
+}
 
 export type Tab = "arrivals" | "departures" | "all";
 
@@ -70,7 +76,7 @@ export default function FlightTable({ tab, onTab, counts, rows, searching, selec
                   onKeyDown={(e) => { if (e.key === "Enter") onSelect(d.a.icao24); }}
                 >
                   <td className="strong">{flightLabel(d)}</td>
-                  <td>{operatorFor(d.a.callsign, d.a.registration).name}</td>
+                  <td><AirlineCell d={d} /></td>
                   <td>{d.a.aircraft_type ?? "–"}</td>
                   <td className="num">{fmtAlt(d)}</td>
                   <td className="num">{fmtSpeed(d)}</td>

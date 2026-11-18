@@ -19,3 +19,9 @@ Thumbs.db
 # Frontend
 node_modules/
 frontend/dist/
+
+# Aircraft lookup DB (downloaded by scripts/build_aircraft_db.py, not redistributed)
+data/aircraft.sqlite
+data/aircraft.sqlite.tmp
+# Airline logos cached by the server (logos.py)
+data/logos/

@@ -97,7 +97,8 @@ def poll_once():
 # arrays with a field list instead of full objects (~4x smaller), rounded to
 # what the map needs. Same field names as the snapshot format, SI units.
 COMPACT_FIELDS = ["icao24", "callsign", "lat", "lon", "baro_alt_m", "on_ground",
-                  "velocity_ms", "track_deg", "vert_rate_ms", "time_position", "category"]
+                  "velocity_ms", "track_deg", "vert_rate_ms", "time_position", "category",
+                  "aircraft_type", "registration", "operator"]
 
 
 def _r(v, nd):
@@ -107,7 +108,8 @@ def _r(v, nd):
 def compact_row(a):
     return [a["icao24"], a["callsign"], _r(a["lat"], 4), _r(a["lon"], 4), _r(a["baro_alt_m"], 0),
             1 if a["on_ground"] else 0, _r(a["velocity_ms"], 1), _r(a["track_deg"], 0),
-            _r(a["vert_rate_ms"], 1), _r(a["time_position"], 0), a["category"]]
+            _r(a["vert_rate_ms"], 1), _r(a["time_position"], 0), a["category"],
+            a.get("aircraft_type"), a.get("registration"), a.get("operator")]
 
 
 def _wrap(x):

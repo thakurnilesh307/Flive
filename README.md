@@ -37,6 +37,7 @@ Requires Python 3.11 and Node 20+.
 python -m pip install -r requirements.txt
 copy .env.example .env      # optional: defaults work without any keys
 cd frontend; npm install; npm run build; cd ..
+python scripts/build_aircraft_db.py   # optional: aircraft types/registrations (~25 MB, re-run weekly)
 python -m uvicorn server:app
 ```
 
@@ -155,6 +156,35 @@ Airports come from OurAirports (public domain): `data/airports.csv` holds the
   a time), `GET /api/ask/status`
 - Answers render as plain text and list which tools were used.
 
+## Aircraft details: type, operator, photo, logo
+
+OpenSky's worldwide feed has positions only, so on its own every plane outside
+Boston would be "Unknown type, unknown operator". The server fills that in:
+
+- **Type and registration:** `aircraft_db.py` looks each icao24 up in
+  `data/aircraft.sqlite`, built by `scripts/build_aircraft_db.py` from
+  [tar1090-db](https://github.com/wiedehopf/tar1090-db) (Mictronics database +
+  FAA records, ~600k aircraft). SQLite instead of a Python dict keeps memory near
+  zero; ~6,000 lookups per world refresh take milliseconds. The file isn't
+  committed (no explicit licence), only lookup results are shown.
+- **Operator:** from the callsign prefix (`DLH415` -> Lufthansa) using the
+  OpenFlights airline list (`data/airlines.csv`, 5,775 ICAO codes, ODbL), and
+  "Private / general aviation" when the callsign is just the tail number. The
+  database's owner field is deliberately not used: for private aircraft it is
+  often a person's name.
+- **Privacy:** aircraft in the FAA privacy programs (PIA/LADD) get their type only,
+  no registration and no photo.
+- **Photo:** `GET /api/aircraft/{icao24}` asks
+  [Planespotters.net](https://www.planespotters.net/photo/api) (cached a day, max
+  1 request/s, 30 lookups/min per visitor). The page shows the thumbnail from
+  Planespotters' image host with the photographer credit and a link back, as
+  their terms ask.
+- **Logo:** `GET /api/logo/{ICAO}` serves square airline logos from
+  [Jxck-S/airline-logos](https://github.com/Jxck-S/airline-logos), downloaded once
+  and cached in `data/logos/`. No logo -> the coloured code badge.
+
+Coverage on a live check: 99% of worldwide aircraft got a type, 86% an operator.
+
 ## Files
 
 | File | Purpose |
@@ -164,6 +194,9 @@ Airports come from OurAirports (public domain): `data/airports.csv` holds the
 | `frontend/` | React + TypeScript UI: live map (`index.html`) and About page (`about.html`) |
 | `ask.py` | Ask Flive: LLM tool-calling loop and tools over the live snapshot |
 | `traffic.py` | Derived facts per aircraft (distance, estimated status, airline) |
+| `aircraft_db.py` | Type/registration lookup (SQLite) and operator from callsign; enriches both feeds |
+| `photos.py`, `logos.py` | Cached Planespotters photo lookup and airline logo cache |
+| `scripts/build_aircraft_db.py` | Downloads the aircraft DB and the OpenFlights airline list into `data/` |
 | `poll_logan.py` | Retired OpenSky poller; its OAuth2 code will be reused for nightly arrival checks |
 | `.env.example` | Template for local secrets (`.env` is gitignored) |
 
@@ -182,3 +215,8 @@ Live positions: [adsb.fi](https://adsb.fi) open data, a community network of
 volunteer ADS-B receivers. Map: [OpenFreeMap](https://openfreemap.org),
 © [OpenMapTiles](https://www.openmaptiles.org/),
 © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
+Aircraft types: [tar1090-db](https://github.com/wiedehopf/tar1090-db) (Mictronics).
+Airlines: [OpenFlights](https://openflights.org/data) (ODbL). Photos:
+[Planespotters.net](https://www.planespotters.net) (credited per photo). Logos:
+[Jxck-S/airline-logos](https://github.com/Jxck-S/airline-logos); trademarks belong
+to their airlines.

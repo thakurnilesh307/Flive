@@ -20,7 +20,7 @@ const byDistance = (x: Derived, y: Derived) => (x.distNm ?? 999) - (y.distNm ?? 
 function matches(d: Derived, q: string): boolean {
   const a = d.a;
   const hay = [a.callsign, a.registration, a.aircraft_type, a.icao24, a.squawk,
-    operatorFor(a.callsign, a.registration).name].filter(Boolean).join(" ").toUpperCase();
+    operatorFor(a.callsign, a.registration, a.operator).name, a.type_desc].filter(Boolean).join(" ").toUpperCase();
   return hay.includes(q);
 }
 
@@ -152,6 +152,7 @@ export default function App() {
       <div className="credit">
         Aircraft <a href="https://adsb.fi" target="_blank" rel="noopener noreferrer">adsb.fi</a>
         {" · "}<a href="https://opensky-network.org" target="_blank" rel="noopener noreferrer">OpenSky Network</a>
+        {" · "}Photos <a href="https://www.planespotters.net" target="_blank" rel="noopener noreferrer">Planespotters.net</a>
         {" · "}Map <a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">OpenFreeMap</a>
         {" "}&copy; <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener noreferrer">OpenMapTiles</a>
         {" "}&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors

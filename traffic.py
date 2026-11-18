@@ -60,7 +60,9 @@ def angle_diff(a, b):
     return abs(((a - b) % 360 + 540) % 360 - 180)
 
 
-def operator(callsign, registration):
+def operator(callsign, registration, known=None):
+    if known:  # from aircraft_db.enrich (worldwide airline list)
+        return "General aviation" if known.startswith("Private") else known
     cs = callsign or ""
     m = re.match(r"^([A-Z]{3})\d", cs)
     if m and m.group(1) in AIRLINES:
@@ -110,8 +112,9 @@ def derive(a, api_time):
     seen = None if _num(a.get("last_contact")) is None else max(0, round(api_time - a["last_contact"]))
     return {
         "callsign": a.get("callsign"),
-        "airline": operator(a.get("callsign"), a.get("registration")),
+        "airline": operator(a.get("callsign"), a.get("registration"), a.get("operator")),
         "aircraft_type": a.get("aircraft_type"),
+        "aircraft_model": a.get("type_desc"),
         "registration": a.get("registration"),
         "icao24": a.get("icao24"),
         "status": STATUS_LABEL[status],

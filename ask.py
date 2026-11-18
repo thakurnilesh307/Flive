@@ -94,12 +94,14 @@ def _with_phrases(row):
 
 def _world_row(a, origin=None):
     """A world (OpenSky) aircraft in display units. Position is described relative
-    to the nearest airport; OpenSky has no aircraft type or registration."""
+    to the nearest airport. Type/registration come from the aircraft database
+    (aircraft_db.enrich), so they can be missing for some planes."""
     alt = None if a["on_ground"] or a["baro_alt_m"] is None else int(round(a["baro_alt_m"] * traffic.M_TO_FT / 25) * 25)
     row = {
         "callsign": a["callsign"],
-        "airline": traffic.operator(a["callsign"], a.get("registration")),
+        "airline": traffic.operator(a["callsign"], a.get("registration"), a.get("operator")),
         "aircraft_type": a.get("aircraft_type"),
+        "aircraft_model": a.get("type_desc"),
         "registration": a.get("registration"),
         "on_ground": a["on_ground"],
         "altitude_ft": alt,
@@ -236,7 +238,7 @@ def tool_aircraft_near(ctx, place="", radius_nm=30, limit=10, airline=None):
     q = str(airline).upper()[:40] if airline else None
     rows = []
     for a in found.values():
-        if q and not (q in traffic.operator(a["callsign"], a.get("registration")).upper()
+        if q and not (q in traffic.operator(a["callsign"], a.get("registration"), a.get("operator")).upper()
                       or (a["callsign"] or "").startswith(q)):
             continue
         d = traffic.distance_nm(origin, (a["lat"], a["lon"]))

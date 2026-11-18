@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Aircraft, BBox, LatLon, Snapshot, WorldView } from "./types";
 
 /** Expand a compact world row (array + field list) into a full Aircraft object. */
+const str = (v: unknown, max: number) => (typeof v === "string" && v ? v.slice(0, max) : null);
+
 function decodeRow(fields: string[], row: unknown[]): Aircraft | null {
   const o: Record<string, unknown> = {};
   fields.forEach((f, i) => { o[f] = row[i] ?? null; });
@@ -17,7 +19,8 @@ function decodeRow(fields: string[], row: unknown[]): Aircraft | null {
     time_position: typeof o.time_position === "number" ? o.time_position : null,
     category: typeof o.category === "number" ? o.category : null,
     geo_alt_m: null, squawk: null, last_contact: null, pos_source: null,
-    aircraft_type: null, registration: null,
+    aircraft_type: str(o.aircraft_type, 4), registration: str(o.registration, 10),
+    operator: str(o.operator, 40),
   };
 }
 

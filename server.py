@@ -12,6 +12,7 @@ The UI is the React app in frontend/, served from frontend/dist once built.
 import asyncio
 import json
 import os
+import re
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
@@ -19,7 +20,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -29,6 +30,9 @@ load_dotenv(HERE / ".env")  # before importing modules that read env vars
 import ask  # noqa: E402
 import world_feed  # noqa: E402
 from adsb_feed import RateLimited, poll_once  # noqa: E402
+import aircraft_db  # noqa: E402
+import photos  # noqa: E402
+import logos  # noqa: E402
 
 POLL_SECONDS = 5        # provider allows 1 req/s; 5s is plenty for a live map
 LOG_SECONDS = 15        # log less often than we poll: keeps log files small
@@ -121,6 +125,7 @@ async def poller():
         try:
             # poll_once uses blocking requests, so run it off the event loop
             snap = await asyncio.to_thread(poll_once)
+            aircraft_db.enrich(snap["aircraft"])  # operator, full type name, missing type/reg
             failures = 0
             latest = snap
             if snap["fetched_at"] - last_logged >= LOG_SECONDS - 0.5:
@@ -151,6 +156,7 @@ async def world_poller():
         delay = world_feed.poll_interval()
         try:
             snap, credits = await asyncio.to_thread(world_feed.poll_once)
+            await asyncio.to_thread(aircraft_db.enrich, snap["aircraft"])  # OpenSky has no type/reg
             world.update(snap, credits)
             failures = 0
             await broadcast_world()
@@ -271,6 +277,47 @@ async def ask_status():
 
 
 # --- World feed -------------------------------------------------------------
+
+PHOTO_LIMITS = [(60, 30)]               # per visitor: 30 aircraft lookups/minute
+recent_lookups: dict[str, deque] = defaultdict(deque)
+_ICAO = re.compile(r"^[0-9a-f]{6}$")
+
+
+@app.get("/api/aircraft/{icao24}")
+async def aircraft_info(icao24: str, request: Request):
+    """Extra details for the selected plane: full type name and a photo."""
+    icao24 = icao24.lower()
+    if not _ICAO.match(icao24):
+        raise HTTPException(400, "Bad aircraft address.")
+    now = time.monotonic()
+    q = recent_lookups[request.client.host if request.client else "?"]
+    while q and now - q[0] > 60:
+        q.popleft()
+    if len(q) >= PHOTO_LIMITS[0][1]:
+        raise HTTPException(429, "Too many lookups, try again in a minute.")
+    q.append(now)
+    info = aircraft_db.lookup(icao24)
+    # No photo for unknown aircraft (avoids random matches) or privacy-listed ones.
+    photo = None
+    if info and info["_reg"] and not info["private"]:
+        photo = await asyncio.to_thread(photos.photo_for, icao24)
+    return {
+        "type_desc": info["type_desc"] if info else None,
+        "aircraft_type": info["aircraft_type"] if info else None,
+        "registration": info["registration"] if info else None,
+        "photo": photo,
+    }
+
+
+@app.get("/api/logo/{code}")
+async def airline_logo(code: str):
+    """Airline logo by ICAO code, downloaded once and cached on disk (see logos.py)."""
+    png = await asyncio.to_thread(logos.logo_png, code.upper()[:3]) if len(code) == 3 else None
+    if png is None:
+        raise HTTPException(404, "No logo.")
+    return Response(content=png, media_type="image/png",
+                    headers={"Cache-Control": "public, max-age=604800"})
+
 
 @app.get("/api/world/stats")
 async def world_stats():

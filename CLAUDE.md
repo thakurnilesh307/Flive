@@ -73,6 +73,18 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
 - `airports.py` + `data/airports.csv` - OurAirports (public domain) airports
   with scheduled service (3,265), built by `scripts/build_airports.py`:
   `find()` by code/name/city, `nearest()`, `describe_position()`.
+- `aircraft_db.py` - icao24 -> type/registration/description from
+  `data/aircraft.sqlite` (tar1090-db, built by `scripts/build_aircraft_db.py`,
+  gitignored, not redistributed) and operator from callsign via
+  `data/airlines.csv` (OpenFlights, committed). `enrich()` runs on BOTH feeds
+  before broadcast and adds `operator` + `type_desc`. Never store/show the DB
+  owner field (individuals' names). PIA/LADD aircraft: type only, no reg/photo.
+- `photos.py` - Planespotters photo lookup (server only, 1 req/s, 1-day cache,
+  User-Agent must carry the repo URL). `logos.py` - airline logos from
+  Jxck-S/airline-logos cached in `data/logos/` (gitignored). Endpoints:
+  `GET /api/aircraft/{icao24}` (type_desc + photo, 30/min per IP),
+  `GET /api/logo/{ICAO}`. World compact rows also carry aircraft_type,
+  registration, operator.
 - `opensky_auth.py` - shared OpenSky OAuth2 token handling (thread-safe).
 - `poll_logan.py` - old OpenSky state-vector logger. Retired for live data; its
   OAuth2 token code is reusable for the OpenSky flights endpoints.
@@ -86,9 +98,11 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
    "baro_alt_m": 1066.8, "on_ground": false, "velocity_ms": 92.6,
    "track_deg": 41.0, "vert_rate_ms": -3.8, "geo_alt_m": 1100.0,
    "squawk": "1234", "time_position": 1794649998.0, "last_contact": 1794649999.5,
-   "pos_source": 0, "category": 4, "aircraft_type": "A320", "registration": "N123JB"}
+   "pos_source": 0, "category": 4, "aircraft_type": "A320", "registration": "N123JB",
+   "type_desc": "Airbus A320-232", "operator": "JetBlue"}
 ]}
 ```
+`type_desc` and `operator` are added by `aircraft_db.enrich()` (may be null).
 Units are SI internally (meters, m/s). Convert to ft/kt/fpm only for display.
 `category` uses OpenSky numbering (4 = large, 5 = B757, 6 = heavy).
 

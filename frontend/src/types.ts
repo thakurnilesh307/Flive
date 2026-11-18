@@ -17,6 +17,10 @@ export interface Aircraft {
   category: number | null;
   aircraft_type: string | null;
   registration: string | null;
+  /** who the flight is operating as, from the server's airline list (callsign prefix) */
+  operator?: string | null;
+  /** full model name from the aircraft database, e.g. "Boeing 737-800" */
+  type_desc?: string | null;
 }
 
 export interface Snapshot {

@@ -137,6 +137,13 @@ export default function About() {
               per day though, which is why the world view refreshes every 90 seconds and not every 5.
             </p>
             <p>
+              The OpenSky feed only has positions, so on its own every plane outside Boston would say &quot;unknown type,
+              unknown operator&quot;. To fill that in I look each plane up by its transponder address in a public aircraft
+              database (about 600,000 aircraft), which gives the type and registration. The airline comes from the callsign:
+              DLH415 starts with DLH, which is Lufthansa. Photos come from <a href="https://www.planespotters.net" target="_blank" rel="noopener noreferrer">Planespotters.net</a>,
+              always with the photographer&apos;s name and a link to the original.
+            </p>
+            <p>
               Things Flive doesn&apos;t know: where a flight came from or where it&apos;s going, gates, delays, or anything about
               passengers. That comes from airline schedules, not the radio signal.
             </p>
@@ -161,6 +168,22 @@ export default function About() {
                 I originally planned to use adsb.lol, but without a key it&apos;s 500 requests a day, and polling every 5 s
                 needs about 17,000. adsb.fi uses the same format, so switching back is just an environment variable
                 (<code>ADSB_URL</code>, plus <code>ADSB_API_KEY</code> if needed).
+              </p>
+              <p>
+                <b>Aircraft details.</b> <code>scripts/build_aircraft_db.py</code> loads
+                {" "}<a href="https://github.com/wiedehopf/tar1090-db" target="_blank" rel="noopener noreferrer">tar1090-db</a>
+                {" "}(Mictronics database plus FAA records) into SQLite, so looking up ~6,000 planes per world refresh takes a
+                few milliseconds and almost no memory. <code>aircraft_db.enrich()</code> adds type, registration, a full model
+                name and the operator to both feeds before they&apos;re broadcast. Operators come from the callsign prefix using
+                the <a href="https://openflights.org/data" target="_blank" rel="noopener noreferrer">OpenFlights</a> airline list
+                (5,775 ICAO codes). On a live check 99% of worldwide planes got a type and 86% an operator.
+              </p>
+              <p>
+                Photos: <code>GET /api/aircraft/&#123;icao24&#125;</code> asks the Planespotters API (cached for a day, at most one
+                request a second). Logos: <code>GET /api/logo/&#123;ICAO&#125;</code> serves square logos from
+                {" "}<a href="https://github.com/Jxck-S/airline-logos" target="_blank" rel="noopener noreferrer">Jxck-S/airline-logos</a>,
+                {" "}downloaded once and cached on the server. Your browser only talks to my server for both, except that the
+                photo itself loads from Planespotters&apos; image host, which their terms require.
               </p>
             </Dev>
           </Section>
@@ -386,8 +409,10 @@ export default function About() {
             </p>
             <p>
               <b>The planes:</b> everything here is broadcast openly by the aircraft and is already on plenty of flight-tracking
-              sites. Flive only shows what&apos;s in the signal, which is usually the airline callsign, registration and aircraft
-              type. Nothing about owners or passengers.
+              sites. Flive shows the callsign, plus the registration and aircraft type from a public aircraft database. It never
+              shows owners (the database has owner names, and for private planes that&apos;s often a person, so I don&apos;t use that
+              field) or anything about passengers. Planes whose owners signed up for the FAA&apos;s privacy programs only show
+              their type, with no registration or photo.
             </p>
             <p>
               <b>adsb.fi:</b> it&apos;s run by volunteers, so I try to be a good user. The server asks once every 5 seconds for
@@ -398,6 +423,7 @@ export default function About() {
           <Section id="stack" title="What it's built with">
             <ul>
               <li><b>Data:</b> adsb.fi open data (Boston, every 5 s) and the OpenSky Network (world, about every 90 s; arrival records planned for checking predictions)</li>
+              <li><b>Aircraft details:</b> tar1090-db / Mictronics (types and registrations), OpenFlights (airline names, ODbL), Planespotters.net (photos, credited on each one), Jxck-S/airline-logos (logos; trademarks belong to the airlines)</li>
               <li><b>Server:</b> Python 3.11, FastAPI, WebSockets, requests, python-dotenv</li>
               <li><b>Frontend:</b> React, TypeScript, Vite, MapLibre GL, the Inter font</li>
               <li><b>Map:</b> OpenFreeMap vector tiles, © OpenMapTiles, © OpenStreetMap contributors, recoloured to dark navy</li>
@@ -450,6 +476,8 @@ python -m uvicorn server:app      # http://127.0.0.1:8000`}</pre>
             <p>
               Flive is a personal project. Aircraft data from <a href="https://adsb.fi" target="_blank" rel="noopener noreferrer">adsb.fi</a> and
               the <a href="https://opensky-network.org" target="_blank" rel="noopener noreferrer">OpenSky Network</a>.
+              Photos from <a href="https://www.planespotters.net" target="_blank" rel="noopener noreferrer">Planespotters.net</a>, airline names from
+              {" "}<a href="https://openflights.org/data" target="_blank" rel="noopener noreferrer">OpenFlights</a>.
               Map <a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener noreferrer">OpenMapTiles</a>
               {" "}© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors.
               Not for navigation.
