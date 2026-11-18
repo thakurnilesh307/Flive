@@ -9,6 +9,9 @@ const GLYPH: Record<FlightStatus, string> = {
   enroute: "M2 8 H13 M9.5 4.5 L13 8 L9.5 11.5", // level arrow
   taxiing: "M2 12 H14 M5 9 H11",          // on the ground, moving
   ground: "M2 12 H14",                    // on the ground
+  climbing: "M3 13 L12 4 M5 4 H12 V11",   // same as departing
+  descending: "M2 6 L12 11 M8 12.5 L12 11 L10.5 7", // same as inbound
+  cruising: "M2 8 H13 M9.5 4.5 L13 8 L9.5 11.5", // same as en route
 };
 
 export default function StatusPill({ status, large = false }: { status: FlightStatus; large?: boolean }) {

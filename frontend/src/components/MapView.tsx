@@ -29,7 +29,7 @@ interface Props {
   onSelect: (id: string | null) => void;
   onMapReady: (map: GLMap) => void;
   /** called (debounced) with the visible bounds whenever the view changes */
-  onViewChange?: (bbox: BBox) => void;
+  onViewChange?: (bbox: BBox, center: LatLon, zoom: number) => void;
   /** keep the camera centred on the selected plane */
   follow: boolean;
   onFollowChange: (follow: boolean) => void;
@@ -320,7 +320,9 @@ export default function MapView(props: Props) {
       const loc = features(aircraft, serverNow, MAX_EXTRAPOLATE_S, localSmooth);
       const selW = selectedWorld();
       const w = selW ? features([selW], serverNow, WORLD_EXTRAPOLATE_S, worldSmooth, { prune: false }) : null;
-      (map.getSource("local") as GeoJSONSource).setData({ type: "FeatureCollection", features: [...loc.out, ...(w?.out ?? [])] } as FC);
+      // A source can be briefly missing while MapLibre rebuilds the style (e.g. after
+      // the GPU context is lost); skip the frame rather than crash the page.
+      (map.getSource("local") as GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features: [...loc.out, ...(w?.out ?? [])] } as FC);
       selectedPos = loc.selectedPos ?? w?.selectedPos ?? null;
       setTrail(loc.selectedPos);
     };
@@ -329,7 +331,7 @@ export default function MapView(props: Props) {
       const { world, clockSkew } = live.current;
       const serverNow = Date.now() / 1000 + clockSkew;
       const res = features(world, serverNow, WORLD_EXTRAPOLATE_S, worldSmooth, { skip: selectedWorld()?.a.icao24 });
-      (map.getSource("world") as GeoJSONSource).setData({ type: "FeatureCollection", features: res.out } as FC);
+      (map.getSource("world") as GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features: res.out } as FC);
     };
 
     // Camera follow: fly in once, then re-centre on the plane every frame.
@@ -378,7 +380,7 @@ export default function MapView(props: Props) {
     let lastReport = 0;
     function reportView() {
       window.clearTimeout(viewTimer);
-      const send = () => { lastReport = performance.now(); live.current.onViewChange?.(visibleBox(map)); };
+      const send = () => { lastReport = performance.now(); const c = map.getCenter(); live.current.onViewChange?.(visibleBox(map), [c.lat, c.lng], map.getZoom()); };
       if (performance.now() - lastReport > VIEW_REPORT_MAX_MS) send();
       else viewTimer = window.setTimeout(send, 300);
     }

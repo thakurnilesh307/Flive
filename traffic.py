@@ -60,8 +60,14 @@ def angle_diff(a, b):
     return abs(((a - b) % 360 + 540) % 360 - 180)
 
 
-def operator(callsign, registration, known=None):
-    if known:  # from aircraft_db.enrich (worldwide airline list)
+UNSET = object()
+
+
+def operator(callsign, registration, known=UNSET):
+    """`known` = aircraft_db.enrich's answer (None means it looked and doesn't know)."""
+    if known is not UNSET:
+        if not known:
+            return "Unknown operator"
         return "General aviation" if known.startswith("Private") else known
     cs = callsign or ""
     m = re.match(r"^([A-Z]{3})\d", cs)
@@ -89,6 +95,9 @@ def classify(a, dist, alt, gs, vs):
         return "inbound"
     if dist < 25 and climbing and (away or dist < 5):
         return "departing"
+    # Just lifted off: climb rate not built up yet, but low, at Logan and not descending.
+    if dist < 5 and alt is not None and alt < 1500 and not descending:
+        return "departing"
     return "enroute"
 
 
@@ -101,7 +110,9 @@ def derive(a, api_time):
     lat, lon = _num(a.get("lat")), _num(a.get("lon"))
     has_pos = lat is not None and lon is not None
     dist = distance_nm((lat, lon), KBOS) if has_pos else None
-    alt = None if a.get("on_ground") or _num(a.get("baro_alt_m")) is None else a["baro_alt_m"] * M_TO_FT
+    # alt_qnh_m: corrected for local air pressure (weather.py); fall back to raw pressure altitude.
+    alt_m = _num(a.get("alt_qnh_m")) if _num(a.get("alt_qnh_m")) is not None else _num(a.get("baro_alt_m"))
+    alt = None if a.get("on_ground") or alt_m is None else alt_m * M_TO_FT
     gs = None if _num(a.get("velocity_ms")) is None else a["velocity_ms"] * MS_TO_KT
     vs = None if _num(a.get("vert_rate_ms")) is None else a["vert_rate_ms"] * MS_TO_FPM
     status = classify(a, dist, alt, gs, vs) if has_pos else "enroute"
@@ -112,7 +123,7 @@ def derive(a, api_time):
     seen = None if _num(a.get("last_contact")) is None else max(0, round(api_time - a["last_contact"]))
     return {
         "callsign": a.get("callsign"),
-        "airline": operator(a.get("callsign"), a.get("registration"), a.get("operator")),
+        "airline": operator(a.get("callsign"), a.get("registration"), a.get("operator", UNSET)),
         "aircraft_type": a.get("aircraft_type"),
         "aircraft_model": a.get("type_desc"),
         "registration": a.get("registration"),

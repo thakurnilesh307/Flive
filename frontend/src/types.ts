@@ -19,6 +19,10 @@ export interface Aircraft {
   registration: string | null;
   /** who the flight is operating as, from the server's airline list (callsign prefix) */
   operator?: string | null;
+  /** that operator's ICAO code (for the logo), e.g. "JBU" even when the callsign is a tail number */
+  operator_icao?: string | null;
+  /** altitude corrected for local air pressure from the nearest METAR (see weather.py) */
+  alt_qnh_m?: number | null;
   /** full model name from the aircraft database, e.g. "Boeing 737-800" */
   type_desc?: string | null;
 }

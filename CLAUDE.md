@@ -37,7 +37,12 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   `position: relative`. `zoom` must be the top-level input of size
   expressions. MapLibre uses 512 px tiles (matters for bounds maths).
   Status (inbound/approach/departing) in `src/status.ts` is a heuristic
-  placeholder until step 4. Never put provider text into HTML strings (hover
+  placeholder until step 4; worldwide planes use `deriveWorld` (climbing/
+  descending/cruising). The flight list follows the map view ("In view",
+  nearest to centre, positions via `src/airports.ts` + `GET /api/airports?v=2`,
+  bump v if the row format changes: it's cached a day); Logan tabs/stats only
+  when the map is within 80 nm of KBOS at zoom >= 7. Search also finds
+  airports and flies there; the top-bar pill is the airport under the map. Never put provider text into HTML strings (hover
   tips use Popup.setText; KBOS marker is static markup). Brand: hexagon logo in
   `src/components/icons.tsx` + `public/favicon.svg`, dark navy only.
 - `ask.py` - Ask Flive (step 3): Ollama backend behind `chat(messages, tools)`,
@@ -47,7 +52,12 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   world). Named-flight prefetch and no-tool nudge stay; max 4 tool rounds. `server.py` exposes `POST /api/ask` (5/min, 40/hour per IP, one model
   call at a time) and `GET /api/ask/status`. Answers render as plain text.
 - `traffic.py` - server-side status/distance/airline; MUST stay in sync with
-  `frontend/src/status.ts` and `airlines.ts` until step 4 replaces both.
+  `frontend/src/status.ts` (Logan rules) until step 4 replaces both. Operator
+  names come from `aircraft_db.enrich` (`operator`, `operator_icao`); the
+  `airlines.ts` table is only a fallback.
+- `weather.py` - all METARs (aviationweather.gov bulk cache, every 10 min);
+  `apply()` adds `alt_qnh_m` (nearest station within 100 nm, below 18,000 ft)
+  to both feeds. `baro_alt_m` stays raw everywhere (logs, protocol).
 - `frontend/about.html` + `src/about/` - public explainer page. Each section is
   plain English first, then a collapsible "For developers" block. Update it
   whenever behavior it describes changes (data source, statuses, AI, roadmap).
@@ -99,10 +109,12 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
    "track_deg": 41.0, "vert_rate_ms": -3.8, "geo_alt_m": 1100.0,
    "squawk": "1234", "time_position": 1794649998.0, "last_contact": 1794649999.5,
    "pos_source": 0, "category": 4, "aircraft_type": "A320", "registration": "N123JB",
-   "type_desc": "Airbus A320-232", "operator": "JetBlue"}
+   "type_desc": "Airbus A320-232", "operator": "JetBlue", "operator_icao": "JBU",
+   "alt_qnh_m": 1205.0}
 ]}
 ```
-`type_desc` and `operator` are added by `aircraft_db.enrich()` (may be null).
+`type_desc`, `operator`, `operator_icao` are added by `aircraft_db.enrich()` and
+`alt_qnh_m` by `weather.apply()` (all may be null).
 Units are SI internally (meters, m/s). Convert to ft/kt/fpm only for display.
 `category` uses OpenSky numbering (4 = large, 5 = B757, 6 = heavy).
 

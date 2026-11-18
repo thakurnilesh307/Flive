@@ -31,8 +31,10 @@ import ask  # noqa: E402
 import world_feed  # noqa: E402
 from adsb_feed import RateLimited, poll_once  # noqa: E402
 import aircraft_db  # noqa: E402
+import airports  # noqa: E402
 import photos  # noqa: E402
 import logos  # noqa: E402
+import weather  # noqa: E402
 
 POLL_SECONDS = 5        # provider allows 1 req/s; 5s is plenty for a live map
 LOG_SECONDS = 15        # log less often than we poll: keeps log files small
@@ -116,6 +118,22 @@ def backoff(failures):
     return min(MAX_BACKOFF, POLL_SECONDS * 2 ** failures)
 
 
+qnh_field = weather.QnhField()   # altimeter settings from every METAR station
+
+
+async def weather_poller():
+    """All METARs every 10 minutes, for correcting low altitudes (see weather.py)."""
+    while True:
+        try:
+            stations = await asyncio.to_thread(weather.fetch_stations)
+            qnh_field.update(stations)
+            print(f"METAR: {len(stations)} stations, KBOS area {qnh_field.inhg_at(42.37, -71.01)} inHg")
+            await asyncio.sleep(600)
+        except Exception as e:
+            print(f"METAR fetch failed ({e}), retrying in 120s")
+            await asyncio.sleep(120)
+
+
 async def poller():
     global latest
     failures = 0
@@ -126,6 +144,7 @@ async def poller():
             # poll_once uses blocking requests, so run it off the event loop
             snap = await asyncio.to_thread(poll_once)
             aircraft_db.enrich(snap["aircraft"])  # operator, full type name, missing type/reg
+            weather.apply(snap["aircraft"], qnh_field)  # adds alt_qnh_m; baro_alt_m stays raw
             failures = 0
             latest = snap
             if snap["fetched_at"] - last_logged >= LOG_SECONDS - 0.5:
@@ -157,6 +176,7 @@ async def world_poller():
         try:
             snap, credits = await asyncio.to_thread(world_feed.poll_once)
             await asyncio.to_thread(aircraft_db.enrich, snap["aircraft"])  # OpenSky has no type/reg
+            await asyncio.to_thread(weather.apply, snap["aircraft"], qnh_field)  # pressure-corrected altitude
             world.update(snap, credits)
             failures = 0
             await broadcast_world()
@@ -177,6 +197,7 @@ async def world_poller():
 
 @asynccontextmanager
 async def lifespan(app):
+    weather_task = asyncio.create_task(weather_poller())
     task = asyncio.create_task(poller())
     world_task = None
     if os.getenv("WORLD_FEED", "on").lower() != "off":
@@ -185,6 +206,7 @@ async def lifespan(app):
     asyncio.create_task(asyncio.to_thread(backend.warm_up))
     yield
     task.cancel()
+    weather_task.cancel()
     if world_task:
         world_task.cancel()
 
@@ -307,6 +329,17 @@ async def aircraft_info(icao24: str, request: Request):
         "registration": info["registration"] if info else None,
         "photo": photo,
     }
+
+
+@app.get("/api/airports")
+async def airport_list():
+    """Compact [iata, icao, lat, lon, name, city] for the 3,265 airports, so the page
+    can say "12 nm NE of JFK" and search airports. Static data: cached for a day."""
+    rows, _ = airports._load()
+    data = [[a["iata"] or "", a["icao"] or "", round(float(a["lat"]), 4), round(float(a["lon"]), 4),
+             a["name"], a["city"]] for a in rows]
+    return Response(content=json.dumps(data, separators=(",", ":")), media_type="application/json",
+                    headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/api/logo/{code}")

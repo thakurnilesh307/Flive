@@ -20,7 +20,8 @@ function decodeRow(fields: string[], row: unknown[]): Aircraft | null {
     category: typeof o.category === "number" ? o.category : null,
     geo_alt_m: null, squawk: null, last_contact: null, pos_source: null,
     aircraft_type: str(o.aircraft_type, 4), registration: str(o.registration, 10),
-    operator: str(o.operator, 40),
+    operator: str(o.operator, 40), operator_icao: str(o.operator_icao, 3),
+    alt_qnh_m: typeof o.alt_qnh_m === "number" ? o.alt_qnh_m : null,
   };
 }
 

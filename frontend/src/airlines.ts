@@ -25,11 +25,14 @@ export interface Operator {
  * `known` is the server's answer (aircraft_db.operator_name, ~5,800 airlines
  * worldwide); the small table above is only the fallback when it's missing.
  */
-export function operatorFor(callsign: string | null, registration: string | null, known?: string | null): Operator {
+export function operatorFor(callsign: string | null, registration: string | null, known?: string | null,
+                            knownCode?: string | null): Operator {
   const cs = callsign ?? "";
   const prefix = cs.match(/^([A-Z]{3})\d/)?.[1];
   if (known?.startsWith("Private")) return { code: "GA", name: "Private / general aviation" };
-  if (known) return { code: prefix ?? known.slice(0, 2).toUpperCase(), name: known };
+  if (known) return { code: knownCode ?? prefix ?? known.slice(0, 2).toUpperCase(), name: known };
+  // The server looked this plane up and doesn't know (field present but null).
+  if (known === null) return { code: prefix ?? "?", name: "Unknown operator" };
   if (prefix && AIRLINES[prefix]) return { code: prefix, name: AIRLINES[prefix] };
   const isTail = /^N\d/.test(cs) || (registration != null && cs === registration);
   if (isTail || (!cs && registration?.startsWith("N"))) return { code: "GA", name: "Private / general aviation" };

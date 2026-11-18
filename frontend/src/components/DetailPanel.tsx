@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Derived } from "../status";
 import { categoryLabel, operatorFor } from "../airlines";
 import AirlineBadge from "./AirlineBadge";
+import { describePosition, useAirports } from "../airports";
 import { flightLabel, fmtAgo, fmtAlt, fmtDist, fmtHeading, fmtSpeed, fmtVs } from "../format";
 import { CloseIcon, LocateIcon, PlaneGlyph, RunwayIcon } from "./icons";
 import StatusPill from "./StatusPill";
@@ -33,12 +34,13 @@ function useAircraftExtra(icao24: string) {
 
 export default function DetailPanel({ d, serverNow, following, onToggleFollow, onClose }: Props) {
   const a = d.a;
-  const op = operatorFor(a.callsign, a.registration, a.operator);
+  const op = operatorFor(a.callsign, a.registration, a.operator, a.operator_icao);
   const { loading, data: extra } = useAircraftExtra(a.icao24);
   const typeCode = a.aircraft_type ?? extra?.aircraft_type ?? null;
   const model = a.type_desc ?? extra?.type_desc ?? null;
   const reg = a.registration ?? extra?.registration ?? null;
   const photo = extra?.photo ?? null;
+  useAirports();
   const category = categoryLabel(a.category);
   const seenAgo = a.last_contact != null ? Math.max(0, serverNow - a.last_contact) : null;
 
@@ -93,7 +95,7 @@ export default function DetailPanel({ d, serverNow, following, onToggleFollow, o
         <div><dt>Groundspeed</dt><dd>{fmtSpeed(d)}</dd></div>
         <div><dt>Track</dt><dd>{fmtHeading(d)}</dd></div>
         <div><dt>Vertical speed</dt><dd>{fmtVs(d)}</dd></div>
-        <div><dt>From KBOS</dt><dd>{fmtDist(d)}</dd></div>
+        <div><dt>Position</dt><dd className="pos">{describePosition(a) ?? `${fmtDist(d)} from KBOS`}</dd></div>
         <div><dt>Squawk</dt><dd>{a.squawk ?? "–"}</dd></div>
       </dl>
 

@@ -225,6 +225,7 @@ button { font: inherit; color: inherit; }
 .metrics > div:nth-child(even) { padding-left: 18px; }
 .metrics dt { color: var(--muted); font-size: 13px; }
 .metrics dd { margin: 4px 0 0; font-size: 20px; font-weight: 600; }
+.metrics dd.pos { font-size: 16px; }
 .predict {
   display: flex; gap: 14px; align-items: center; margin-top: 6px; padding: 14px;
   border-radius: 12px; border: 1px dashed rgba(130, 160, 210, .28); background: rgba(255, 255, 255, .02);
@@ -243,6 +244,9 @@ button { font: inherit; color: inherit; }
 .status-departing { --c: var(--amber); }
 .status-enroute { --c: var(--violet); }
 .status-taxiing, .status-ground { --c: var(--grey); }
+.status-climbing { --c: var(--amber); }
+.status-descending { --c: var(--accent); }
+.status-cruising { --c: var(--violet); }
 .status-taxiing .status-text, .status-ground .status-text { color: var(--muted); }
 
 /* ---------- flight table ---------- */
@@ -274,6 +278,8 @@ td.strong { font-weight: 600; }
 tbody tr { cursor: pointer; transition: background .12s; }
 tbody tr:hover { background: rgba(255, 255, 255, .04); }
 tbody tr.selected { background: var(--accent-soft); }
+tbody tr.airport-row td { color: #9cc9ff; }
+tbody tr.airport-row td.muted { color: var(--muted); }
 .empty { padding: 18px 16px; margin: 0; }
 
 /* ---------- misc ---------- */

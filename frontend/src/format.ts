@@ -33,5 +33,6 @@ export function fmtAgo(seconds: number): string {
   return `${Math.round(seconds / 60)}m ago`;
 }
 
-export const bostonTime = (ms: number) =>
-  new Date(ms).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit", second: "2-digit" });
+/** Clock in the viewer's own time zone (it's a worldwide map now). */
+export const localTime = (ms: number) =>
+  new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit", timeZoneName: "short" });

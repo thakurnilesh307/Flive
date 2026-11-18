@@ -1,5 +1,5 @@
 import { Logo, SearchIcon, CloseIcon, SparkIcon, InfoIcon } from "./icons";
-import { bostonTime } from "../format";
+import { localTime } from "../format";
 
 interface Props {
   query: string;
@@ -9,9 +9,11 @@ interface Props {
   now: number;
   chatOpen: boolean;
   onToggleChat: () => void;
+  /** airport at the middle of the map (when zoomed in), shown where KBOS used to be */
+  place: { code: string; name: string } | null;
 }
 
-export default function TopBar({ query, onQuery, onSubmit, live, now, chatOpen, onToggleChat }: Props) {
+export default function TopBar({ query, onQuery, onSubmit, live, now, chatOpen, onToggleChat, place }: Props) {
   return (
     <header className="topbar">
       <div className="brand">
@@ -24,8 +26,8 @@ export default function TopBar({ query, onQuery, onSubmit, live, now, chatOpen, 
         <input
           value={query}
           onChange={(e) => onQuery(e.target.value)}
-          placeholder="Search flights, callsigns, airlines, types…"
-          aria-label="Search aircraft"
+          placeholder="Search flights, airlines, airports…"
+          aria-label="Search flights and airports"
           maxLength={40}
         />
         {query && (
@@ -39,7 +41,7 @@ export default function TopBar({ query, onQuery, onSubmit, live, now, chatOpen, 
         <div className={`live ${live ? "on" : ""}`} aria-live="polite">
           <span className="dot" />
           <span className="live-text">{live ? "Live" : "Reconnecting"}</span>
-          <span className="live-time">· {bostonTime(now)}</span>
+          <span className="live-time">· {localTime(now)}</span>
         </div>
         <button className={`ask-btn ${chatOpen ? "active" : ""}`} onClick={onToggleChat} aria-pressed={chatOpen}>
           <SparkIcon size={17} /><span>Ask Flive</span>
@@ -47,7 +49,7 @@ export default function TopBar({ query, onQuery, onSubmit, live, now, chatOpen, 
         <a className="about-link" href="/about.html" aria-label="About Flive">
           <InfoIcon size={17} /><span>About</span>
         </a>
-        <div className="airport-pill" title="Boston Logan International">KBOS</div>
+        {place && <div className="airport-pill" title={`Map is centred near ${place.name}`}>{place.code}</div>}
       </div>
     </header>
   );

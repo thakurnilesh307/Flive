@@ -112,6 +112,11 @@ export default function About() {
               in <a href="#status">how the labels are guessed</a>.
             </p>
             <p>
+              The list at the bottom follows the map: it shows the planes you&apos;re looking at, nearest to the middle first,
+              with where they are (&quot;12 nm NE of JFK&quot;). Over Boston you also get Logan arrival and departure tabs. You can
+              search for an airport (&quot;JFK&quot;, &quot;Heathrow&quot;, &quot;Chicago&quot;) to jump straight there.
+            </p>
+            <p>
               If you zoom out far enough the map turns into a globe with every plane I can get data for. Boston updates
               every 5 seconds. The rest of the world only updates about every 90 seconds (free data has limits), so in
               between the planes are moved forward on their own so nothing looks frozen.
@@ -289,14 +294,16 @@ export default function About() {
             <p>
               The signal doesn&apos;t say &quot;I&apos;m about to land&quot;, so I look at three things: how far the plane is from
               Logan, whether it&apos;s pointed toward or away from it, and whether it&apos;s climbing or descending. A few simple
-              rules turn that into a label:
+              rules turn that into a label. These Logan labels only exist around Boston, because that&apos;s where I have
+              5-second data. Everywhere else a plane just says what it&apos;s doing: Climbing, Descending, Cruising or on the
+              ground.
             </p>
             <table className="rules">
               <thead><tr><th>Label</th><th>Rule</th></tr></thead>
               <tbody>
                 <tr><td><span className="dot green" /> On approach</td><td>Within 15 nm, below 5,000 ft, pointed at Logan, and descending (or already below 2,000 ft)</td></tr>
                 <tr><td><span className="dot blue" /> Inbound</td><td>Within 40 nm, below 18,000 ft, pointed at Logan, descending</td></tr>
-                <tr><td><span className="dot amber" /> Departing</td><td>Within 25 nm, climbing, and pointed away from Logan (or still really close to it)</td></tr>
+                <tr><td><span className="dot amber" /> Departing</td><td>Within 25 nm, climbing, and pointed away from Logan (or still really close to it). Also anything that just lifted off: under 1,500 ft, within 5 nm, and not descending</td></tr>
                 <tr><td><span className="dot violet" /> En route</td><td>Anything in the air that doesn&apos;t match the above</td></tr>
               </tbody>
             </table>
@@ -444,8 +451,8 @@ python -m uvicorn server:app      # http://127.0.0.1:8000`}</pre>
             <div className="faq">
               <details><summary>Why can&apos;t I find a specific flight?</summary>
                 <p>It might be outside the 40 nm circle, not near a volunteer receiver yet, or not broadcasting ADS-B at all (some military and older planes don&apos;t). Flive also shows planes by their radio callsign (like JBU470), which isn&apos;t always the flight number on your ticket.</p></details>
-              <details><summary>Why does a landing plane sometimes show a negative altitude?</summary>
-                <p>The altitude is barometric, meaning it&apos;s calculated from air pressure assuming a &quot;standard&quot; day. When the real pressure in Boston is high, planes near the runway can read a bit below zero. That&apos;s normal, and it&apos;s the same altitude pilots and controllers use.</p></details>
+              <details><summary>Why did landing planes used to show a negative altitude?</summary>
+                <p>Planes broadcast barometric altitude, which is calculated from air pressure assuming a &quot;standard&quot; day. On a high-pressure morning that reads too low, so a plane on the runway could show &quot;-400 ft&quot;. Pilots fix this by dialling the local pressure into their altimeter, and Flive now does the same: every 10 minutes the server grabs the latest weather report (METAR) from about 4,800 airports and corrects each low plane with the nearest one. Planes far out over the ocean, with no weather station nearby, still show the raw value.</p></details>
               <details><summary>Is this what air traffic control sees?</summary>
                 <p>No. Controllers use radar and certified systems with full coverage. Flive runs on volunteer receivers and is just for curiosity and learning. Please don&apos;t use it for navigation or anything safety-related.</p></details>
               <details><summary>How accurate are the &quot;inbound&quot; and &quot;on approach&quot; labels?</summary>

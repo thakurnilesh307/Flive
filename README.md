@@ -63,12 +63,20 @@ track), so thousands of worldwide planes stay smooth.
 - Aircraft icons rotate with track and glide between updates (dead
   reckoning from speed and track: Boston every 0.5 s capped at 20 s, world
   every 1 s capped at 120 s); stale aircraft fade.
-- Search, selection and the detail panel cover worldwide aircraft in view too.
+- The flight list follows the map: "In view" lists every plane on screen
+  (Boston feed + worldwide), nearest to the map centre first, with positions
+  like "12 nm NE of JFK" from the nearest airport. The "Logan arrivals/
+  departures" tabs and Logan stats only appear when the map is over Boston.
+- Search finds flights, airlines, types and airports (IATA/ICAO code, name or
+  city); Enter on an exact airport code flies the map there. The top-bar pill
+  shows the airport at the middle of the map.
 - Selecting an aircraft shows a detail panel and a dashed trail of its
   recent positions (kept in the browser since page load).
 - "Inbound", "On approach" and "Departing" are **estimates** from distance,
-  track and vertical rate (`frontend/src/status.ts`). Real arrival/departure
-  detection is roadmap step 4; predicted runway/ETA is step 5.
+  track and vertical rate relative to Logan (`frontend/src/status.ts`); planes
+  elsewhere get motion-only labels (Climbing, Descending, Cruising). Real
+  arrival/departure detection is roadmap step 4; predicted runway/ETA is step 5.
+- Altitudes are corrected for local air pressure (see "Altitudes" below).
 - All provider text is rendered as text (React escaping, `textContent` in
   Leaflet tooltips), and the server already strips callsigns to `[A-Z0-9-]`.
 - `/about.html` is the project's explainer: plain-language sections with
@@ -156,6 +164,18 @@ Airports come from OurAirports (public domain): `data/airports.csv` holds the
   a time), `GET /api/ask/status`
 - Answers render as plain text and list which tools were used.
 
+## Altitudes
+
+ADS-B altitude is barometric pressure altitude, computed for a "standard" day
+(29.92 inHg). On a high-pressure morning everything below ~18,000 ft reads too
+low (a plane on Logan's runway showed "-400 ft"). `weather.py` downloads every
+METAR station's altimeter setting from
+[aviationweather.gov](https://aviationweather.gov/data/cache/) every 10 minutes
+(~250 KB, ~4,800 stations) and adds `alt_qnh_m` = pressure altitude corrected
+with the nearest station within 100 nm (1 inHg = 1,000 ft, the pilots' rule).
+`baro_alt_m` stays raw, so the logs keep the original value; planes far from
+any station (mid-ocean) keep the raw value.
+
 ## Aircraft details: type, operator, photo, logo
 
 OpenSky's worldwide feed has positions only, so on its own every plane outside
@@ -169,9 +189,12 @@ Boston would be "Unknown type, unknown operator". The server fills that in:
   committed (no explicit licence), only lookup results are shown.
 - **Operator:** from the callsign prefix (`DLH415` -> Lufthansa) using the
   OpenFlights airline list (`data/airlines.csv`, 5,775 ICAO codes, ODbL), and
-  "Private / general aviation" when the callsign is just the tail number. The
-  database's owner field is deliberately not used: for private aircraft it is
-  often a person's name.
+  "Private / general aviation" when the callsign is just the tail number. A
+  hand-checked `data/airlines_extra.csv` adds airlines newer than OpenFlights.
+  The database's owner name is never stored or shown (for private aircraft it is
+  often a person); the build only keeps an airline code when the owner IS an
+  airline ("JETBLUE AIRWAYS CORP" -> JBU), so an airliner flying under its tail
+  number (positioning or test flights) still shows its airline and logo.
 - **Privacy:** aircraft in the FAA privacy programs (PIA/LADD) get their type only,
   no registration and no photo.
 - **Photo:** `GET /api/aircraft/{icao24}` asks
@@ -196,6 +219,7 @@ Coverage on a live check: 99% of worldwide aircraft got a type, 86% an operator.
 | `traffic.py` | Derived facts per aircraft (distance, estimated status, airline) |
 | `aircraft_db.py` | Type/registration lookup (SQLite) and operator from callsign; enriches both feeds |
 | `photos.py`, `logos.py` | Cached Planespotters photo lookup and airline logo cache |
+| `weather.py` | Worldwide METAR altimeter settings; pressure-corrected altitudes |
 | `scripts/build_aircraft_db.py` | Downloads the aircraft DB and the OpenFlights airline list into `data/` |
 | `poll_logan.py` | Retired OpenSky poller; its OAuth2 code will be reused for nightly arrival checks |
 | `.env.example` | Template for local secrets (`.env` is gitignored) |

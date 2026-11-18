@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Map as GLMap } from "maplibre-gl";
 import { useLiveFeed } from "./useLiveFeed";
-import { derive, isArriving, type Derived } from "./status";
+import { derive, deriveWorld, isArriving, type Derived } from "./status";
 import { operatorFor } from "./airlines";
-import { KBOS } from "./geo";
+import { KBOS, distanceNm } from "./geo";
+import type { BBox, LatLon } from "./types";
+import { nearest, searchAirports, useAirports, type Airport } from "./airports";
 import MapView from "./components/MapView";
 import TopBar from "./components/TopBar";
 import StatsCard from "./components/StatsCard";
@@ -15,12 +17,22 @@ import { LocateIcon, MinusIcon, PlusIcon } from "./components/icons";
 
 const LIVE_MAX_AGE_S = 30;
 const MAX_SEARCH_ROWS = 100;
+const MAX_VIEW_ROWS = 100;
+const NEAR_BOSTON_NM = 80;   // map centre within this of Logan (and zoomed in) = "over Boston"
+const NEAR_BOSTON_ZOOM = 7;
+
+/** Is a lon/lat inside a box whose east edge may be past 180 (unwrapped)? */
+function inBox(lat: number, lon: number, [w, s, e, n]: BBox): boolean {
+  if (lat < s || lat > n) return false;
+  if (e - w >= 360) return true;
+  return ((((lon - w) % 360) + 360) % 360) <= e - w;
+}
 const byDistance = (x: Derived, y: Derived) => (x.distNm ?? 999) - (y.distNm ?? 999);
 
 function matches(d: Derived, q: string): boolean {
   const a = d.a;
   const hay = [a.callsign, a.registration, a.aircraft_type, a.icao24, a.squawk,
-    operatorFor(a.callsign, a.registration, a.operator).name, a.type_desc].filter(Boolean).join(" ").toUpperCase();
+    operatorFor(a.callsign, a.registration, a.operator, a.operator_icao).name, a.type_desc].filter(Boolean).join(" ").toUpperCase();
   return hay.includes(q);
 }
 
@@ -29,7 +41,8 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [follow, setFollow] = useState(true);
   const [query, setQuery] = useState("");
-  const [tab, setTab] = useState<Tab>("arrivals");
+  const [tab, setTab] = useState<Tab>("inview");
+  const [view, setView] = useState<{ bbox: BBox | null; center: LatLon; zoom: number }>({ bbox: null, center: KBOS, zoom: 10 });
   const [tableOpen, setTableOpen] = useState(true);
   const [now, setNow] = useState(Date.now());
   const [chatOpen, setChatOpen] = useState(false);
@@ -43,7 +56,7 @@ export default function App() {
 
   const derived = useMemo(() => (snapshot?.aircraft ?? []).map(derive).sort(byDistance), [snapshot]);
   // Worldwide aircraft in view (server already removed the ones the Boston feed covers).
-  const worldDerived = useMemo(() => (world?.aircraft ?? []).map(derive), [world]);
+  const worldDerived = useMemo(() => (world?.aircraft ?? []).map(deriveWorld), [world]);
   const selected = derived.find((d) => d.a.icao24 === selectedId)
     ?? worldDerived.find((d) => d.a.icao24 === selectedId) ?? null;
   const serverNow = now / 1000 + clockSkew;
@@ -53,6 +66,19 @@ export default function App() {
   useEffect(() => { keepAircraft(selectedId); }, [selectedId, keepAircraft]);
 
   const q = query.trim().toUpperCase();
+  const airportsReady = useAirports();
+  const airportHits = useMemo(() => (q && airportsReady ? searchAirports(q) : []), [q, airportsReady]);
+  const goToAirport = useCallback((ap: Airport) => {
+    setQuery("");
+    setSelectedId(null);
+    mapRef.current?.flyTo({ center: [ap.lon, ap.lat], zoom: 10, duration: 1800 });
+  }, []);
+  // Airport under the middle of the map, shown in the top bar (replaces the old fixed "KBOS").
+  const place = useMemo(() => {
+    if (!airportsReady || view.zoom < NEAR_BOSTON_ZOOM) return null;
+    const hit = nearest(view.center);
+    return hit && hit.dist < 40 ? { code: hit.a.code, name: hit.a.name } : null;
+  }, [airportsReady, view]);
   const searchHits = useMemo(
     () => (q ? [...derived, ...worldDerived].filter((d) => matches(d, q)) : null),
     [derived, worldDerived, q],
@@ -63,12 +89,31 @@ export default function App() {
     return new Set([...derived, ...worldDerived].map((d) => d.a.icao24).filter((id) => !hit.has(id)));
   }, [derived, worldDerived, searchHits]);
 
+  // Logan tabs and stats only when the map is actually over Boston.
+  const nearBoston = view.zoom >= NEAR_BOSTON_ZOOM && distanceNm(view.center, KBOS) < NEAR_BOSTON_NM;
+
+  // "In view": every plane inside the map view (Boston feed + worldwide), nearest to the centre first.
+  const inView = useMemo(() => {
+    const box = view.bbox;
+    const pts = [...derived, ...worldDerived].filter((d) =>
+      d.a.lat != null && d.a.lon != null && (box == null || inBox(d.a.lat, d.a.lon, box)));
+    const dist = new Map(pts.map((d) => [d, distanceNm(view.center, [d.a.lat!, d.a.lon!])]));
+    return pts.sort((x, y) => dist.get(x)! - dist.get(y)!);
+  }, [derived, worldDerived, view]);
+  const bostonInView = view.bbox ? derived.filter((d) => d.a.lat != null && d.a.lon != null && inBox(d.a.lat, d.a.lon, view.bbox!)).length : derived.length;
+  // The server counts worldwide planes in the visible box before thinning, so this is the true total.
+  const inViewTotal = world ? bostonInView + world.totalInView : inView.length;
+
   const lists = useMemo(() => ({
     arrivals: derived.filter((d) => isArriving(d.status)),
     departures: derived.filter((d) => d.status === "departing"),
-    all: derived,
-  }), [derived]);
-  const counts = { arrivals: lists.arrivals.length, departures: lists.departures.length, all: derived.length };
+    inview: inView.slice(0, MAX_VIEW_ROWS),
+  }), [derived, inView]);
+  const counts = { arrivals: lists.arrivals.length, departures: lists.departures.length, inview: inViewTotal };
+  const activeTab: Tab = nearBoston ? tab : "inview";
+  const tableNote = activeTab === "inview"
+    ? (inViewTotal > MAX_VIEW_ROWS ? `Nearest ${MAX_VIEW_ROWS} to the map centre` : "Nearest to the map centre first")
+    : "Logan statuses are my best guess from position and speed";
 
   // Selecting a plane always (re)starts following it; MapView flies the camera there.
   const select = useCallback((id: string | null) => {
@@ -98,7 +143,7 @@ export default function App() {
         clockSkew={clockSkew}
         onSelect={(id) => select(id)}
         onMapReady={(m) => { mapRef.current = m; }}
-        onViewChange={sendView}
+        onViewChange={(bbox, center, zoom) => { sendView(bbox); setView({ bbox, center, zoom }); }}
         follow={follow}
         onFollowChange={setFollow}
       />
@@ -106,7 +151,14 @@ export default function App() {
       <TopBar
         query={query}
         onQuery={setQuery}
-        onSubmit={() => { if (searchHits?.[0]) select(searchHits[0].a.icao24); }}
+        onSubmit={() => {
+          // An exact airport code ("JFK") or nothing else matching -> go to the airport.
+          const ap = airportHits[0];
+          const exactAirport = ap && (ap.iata === q || ap.icao === q);
+          if (ap && (exactAirport || !searchHits?.length)) goToAirport(ap);
+          else if (searchHits?.[0]) select(searchHits[0].a.icao24);
+        }}
+        place={place}
         live={live}
         now={now}
         chatOpen={chatOpen}
@@ -114,10 +166,10 @@ export default function App() {
       />
 
       <StatsCard
-        tracked={derived.filter((d) => d.a.lat != null).length}
+        inView={inViewTotal}
+        nearBoston={nearBoston}
         inbound={lists.arrivals.length}
         approach={derived.filter((d) => d.status === "approach").length}
-        worldInView={world ? world.totalInView : null}
         worldEveryS={world?.nextUpdateS ?? 90}
       />
 
@@ -137,11 +189,15 @@ export default function App() {
       )}
 
       <FlightTable
-        tab={tab}
+        tab={activeTab}
         onTab={setTab}
+        tabs={nearBoston ? ["arrivals", "departures", "inview"] : ["inview"]}
         counts={counts}
-        rows={searchHits ? searchHits.slice(0, MAX_SEARCH_ROWS) : lists[tab]}
+        note={tableNote}
+        rows={searchHits ? searchHits.slice(0, MAX_SEARCH_ROWS) : lists[activeTab]}
         searching={searchHits != null}
+        airports={airportHits}
+        onAirport={goToAirport}
         selectedId={selectedId}
         onSelect={(id) => select(id)}
         open={tableOpen}
