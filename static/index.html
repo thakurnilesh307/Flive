@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flive</title>
+<style>
+  :root {
+    --bg: #f6f8f7; --fg: #1d2421; --muted: #66706b; --line: #d5dbd8;
+    --live: #1f8a5b; --stale: #b5651d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1412; --fg: #dfe7e3; --muted: #8a958f; --line: #26302c;
+      --live: #4cc38a; --stale: #e0a15e;
+    }
+  }
+  body { margin: 0; padding: 1.5rem; background: var(--bg); color: var(--fg);
+         font: 15px/1.4 system-ui, sans-serif; }
+  h1 { margin: 0 0 .25rem; font-size: 1.4rem; }
+  #status { color: var(--muted); margin-bottom: 1rem; }
+  #status .dot { display: inline-block; width: .6em; height: .6em;
+                 border-radius: 50%; background: var(--stale); margin-right: .4em; }
+  #status.live .dot { background: var(--live); }
+  .wrap { overflow-x: auto; }
+  table { border-collapse: collapse; min-width: 560px; }
+  th, td { padding: .35rem .9rem .35rem 0; text-align: right;
+           border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 500; }
+  tr.ground td { color: var(--muted); }
+</style>
+</head>
+<body>
+<h1>Flive</h1>
+<div id="status"><span class="dot"></span><span id="status-text">Connecting…</span></div>
+<div class="wrap">
+  <table>
+    <thead><tr>
+      <th>Callsign</th><th>Alt (ft)</th><th>Speed (kt)</th>
+      <th>Track</th><th>V/S (fpm)</th><th>From BOS (nm)</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+
+<script>
+const KBOS = [42.3656, -71.0096];
+const rowsEl = document.getElementById("rows");
+const statusEl = document.getElementById("status");
+const statusText = document.getElementById("status-text");
+let lastUpdate = null;
+
+const fmt = (v, mult = 1) => v == null ? "–" : Math.round(v * mult).toLocaleString();
+const distNm = a => a.lat == null ? null :
+  Math.hypot((a.lat - KBOS[0]) * 60, (a.lon - KBOS[1]) * 60 * 0.74);
+
+function render(snap) {
+  lastUpdate = Date.now();
+  const aircraft = snap.aircraft
+    .map(a => ({ ...a, dist: distNm(a) }))
+    .sort((x, y) => x.on_ground - y.on_ground || (x.dist ?? 999) - (y.dist ?? 999));
+
+  rowsEl.replaceChildren(...aircraft.map(a => {
+    const tr = document.createElement("tr");
+    if (a.on_ground) tr.className = "ground";
+    const cells = [
+      (a.callsign || "").trim() || a.icao24,
+      a.on_ground ? "ground" : fmt(a.baro_alt_m, 3.28084),
+      fmt(a.velocity_ms, 1.94384),
+      a.track_deg == null ? "–" : Math.round(a.track_deg) + "°",
+      fmt(a.vert_rate_ms, 196.85),
+      a.dist == null ? "–" : a.dist.toFixed(1),
+    ];
+    for (const c of cells) {
+      const td = document.createElement("td");
+      td.textContent = c;           // textContent: callsigns are untrusted input
+      tr.appendChild(td);
+    }
+    return tr;
+  }));
+}
+
+function connect() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onopen = () => statusEl.classList.add("live");
+  ws.onmessage = e => render(JSON.parse(e.data));
+  ws.onclose = () => {
+    statusEl.classList.remove("live");
+    statusText.textContent = "Disconnected. Reconnecting…";
+    setTimeout(connect, 3000);
+  };
+}
+
+setInterval(() => {
+  if (lastUpdate && statusEl.classList.contains("live")) {
+    const s = Math.round((Date.now() - lastUpdate) / 1000);
+    statusText.textContent = `${rowsEl.children.length} aircraft, updated ${s}s ago`;
+  }
+}, 1000);
+
+connect();
+</script>
+</body>
+</html>
