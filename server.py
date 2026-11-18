@@ -256,7 +256,7 @@ async def ask_endpoint(req: AskRequest, request: Request):
         raise HTTPException(503, "Ask Flive is busy right now. Try again in a moment.")
     try:
         history = [t.model_dump() for t in req.history]
-        return await asyncio.to_thread(ask.answer, req.question, history, latest, backend)
+        return await asyncio.to_thread(ask.answer, req.question, history, latest, backend, world)
     except ask.BackendUnavailable as e:
         print(f"Ask Flive unavailable: {e}")
         raise HTTPException(503, "Ask Flive's language model is offline right now.")

@@ -317,7 +317,8 @@ export default function About() {
 
           <Section id="ask-flive" kicker="The AI" title="Ask Flive: an AI that only answers from live data">
             <p>
-              Ask Flive lets you ask questions in normal language, such as &quot;What&apos;s landing next?&quot; or &quot;Any JetBlue flights nearby?&quot;
+              Ask Flive lets you ask questions in normal language, such as &quot;What&apos;s landing next?&quot;, &quot;How busy is Heathrow?&quot; or
+              &quot;Where is DLH400 right now?&quot;
               It&apos;s powered by a <b>large language model</b> (LLM): software trained on huge amounts of text to predict and write
               language. On their own, LLMs are confident guessers. Ask one about planes over Boston and it will happily make
               something up.
@@ -339,14 +340,17 @@ export default function About() {
               to an outside AI company, and visitors don&apos;t need to install anything.
             </p>
             <Dev title="For developers: tools, loop and guardrails">
-              <p>The model (default <code>qwen3:8b</code>, set by <code>OLLAMA_MODEL</code>) gets four tools, defined in <code>ask.py</code>:</p>
+              <p>The model (default <code>qwen3:8b</code>, set by <code>OLLAMA_MODEL</code>) gets seven tools, defined in <code>ask.py</code>: four for Boston and three worldwide:</p>
               <table className="rules">
                 <thead><tr><th>Tool</th><th>Returns</th></tr></thead>
                 <tbody>
                   <tr><td><code>traffic_summary</code></td><td>Counts: total, airborne, on ground, by estimated status</td></tr>
                   <tr><td><code>list_aircraft(status?, airline?, limit?)</code></td><td>Aircraft sorted by distance, with altitude, speed, distance, direction from KBOS</td></tr>
-                  <tr><td><code>get_aircraft(query)</code></td><td>One aircraft by callsign, registration or ICAO hex, or <code>found: false</code></td></tr>
-                  <tr><td><code>landing_sequence</code></td><td>Arriving aircraft ordered by straight-line time at current speed (a lower bound, not an ETA)</td></tr>
+                  <tr><td><code>get_aircraft(query)</code></td><td>One aircraft anywhere by callsign, registration or ICAO hex (Boston first, then worldwide), or <code>found: false</code></td></tr>
+                  <tr><td><code>landing_sequence</code></td><td>Arriving aircraft at Logan ordered by straight-line time at current speed (a lower bound, not an ETA)</td></tr>
+                  <tr><td><code>aircraft_near(place, radius_nm?, airline?)</code></td><td>Count and nearest aircraft around any airport or city; Boston feed overrides world data near Logan</td></tr>
+                  <tr><td><code>find_airport(query)</code></td><td>Airport by code, name or city, from OurAirports (public domain, 3,265 airports with scheduled service)</td></tr>
+                  <tr><td><code>world_summary</code></td><td>Worldwide total, airborne, counts by region, data age and a coverage caveat</td></tr>
                 </tbody>
               </table>
               <ul>

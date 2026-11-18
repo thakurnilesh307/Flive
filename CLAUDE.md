@@ -37,8 +37,10 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   tips use Popup.setText; KBOS marker is static markup). Brand: hexagon logo in
   `src/components/icons.tsx` + `public/favicon.svg`, dark navy only.
 - `ask.py` - Ask Flive (step 3): Ollama backend behind `chat(messages, tools)`,
-  4 tools over the in-memory snapshot, max 4 tool rounds, grounding system
-  prompt. `server.py` exposes `POST /api/ask` (5/min, 40/hour per IP, one model
+  7 tools taking a `Ctx` (Boston snapshot + derived rows + WorldStore): Boston
+  (traffic_summary, list_aircraft, landing_sequence), world (aircraft_near with
+  airline filter, find_airport, world_summary), get_aircraft (Boston then
+  world). Named-flight prefetch and no-tool nudge stay; max 4 tool rounds. `server.py` exposes `POST /api/ask` (5/min, 40/hour per IP, one model
   call at a time) and `GET /api/ask/status`. Answers render as plain text.
 - `traffic.py` - server-side status/distance/airline; MUST stay in sync with
   `frontend/src/status.ts` and `airlines.ts` until step 4 replaces both.
@@ -61,8 +63,11 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   Plan: (1) feed + store [done], (2) viewport subscription on /ws with compact
   format [done], (3) MapLibre-native aircraft layers replacing Leaflet [done;
   view messages may carry `keep: [icao24]` so the selected plane survives
-  thinning], (4) Ask Flive region tools via OurAirports,
+  thinning], (4) Ask Flive region tools via OurAirports [done],
   (5) About/README "scaling to the world" section.
+- `airports.py` + `data/airports.csv` - OurAirports (public domain) airports
+  with scheduled service (3,265), built by `scripts/build_airports.py`:
+  `find()` by code/name/city, `nearest()`, `describe_position()`.
 - `opensky_auth.py` - shared OpenSky OAuth2 token handling (thread-safe).
 - `poll_logan.py` - old OpenSky state-vector logger. Retired for live data; its
   OAuth2 token code is reusable for the OpenSky flights endpoints.

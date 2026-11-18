@@ -89,17 +89,25 @@ for that area, capped at 2,000 and thinned evenly when zoomed out. A whole-world
 view is ~160 KB per update instead of the full ~700 KB, and a region is a few
 KB. Pages that never send a view keep getting only the Boston feed.
 
-The map draws them all with MapLibre on the GPU, globe view included. Next:
-Ask Flive tools for regions and airports. Debug endpoints:
+The map draws them all with MapLibre on the GPU, globe view included, and Ask
+Flive can answer about any airport or region. Debug endpoints:
 `GET /api/world/stats`, `GET /api/world?bbox=west,south,east,north`.
 
 ## Ask Flive
 
 A chat panel that answers questions about live traffic using a local LLM
-(Ollama) with tool calling. The model can't answer from memory: it calls one of
-four tools (`traffic_summary`, `list_aircraft`, `get_aircraft`,
-`landing_sequence`) that read the server's in-memory snapshot, then writes its
-reply from those results and says when Flive doesn't have the data.
+(Ollama) with tool calling. The model can't answer from memory: it calls tools
+that read the server's in-memory data, then writes its reply from those results
+and says when Flive doesn't have the data.
+
+- Boston: `traffic_summary`, `list_aircraft`, `landing_sequence`
+- Worldwide: `aircraft_near` (any airport or city, optional airline filter),
+  `find_airport`, `world_summary` (totals by region, with a coverage caveat)
+- Anywhere: `get_aircraft` (Boston feed first, then worldwide; positions are
+  described relative to the nearest airport)
+
+Airports come from OurAirports (public domain): `data/airports.csv` holds the
+3,265 airports with scheduled service, rebuilt by `scripts/build_airports.py`.
 
 - `ask.py`: tools, system prompt, tool-calling loop (max 4 rounds), Ollama backend
 - `traffic.py`: status/distance/airline derivation (mirrors `frontend/src/status.ts`)

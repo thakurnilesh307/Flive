@@ -87,7 +87,7 @@ export default function App() {
   const nearestAirborne = derived.find((d) => !d.a.on_ground && d.a.callsign);
   const suggestions = [
     "What's landing next?",
-    "How many planes are on the ground?",
+    "How busy is Heathrow right now?",
     nearestAirborne ? `Tell me about ${flightLabel(nearestAirborne)}` : "Which airlines are around right now?",
   ];
 
