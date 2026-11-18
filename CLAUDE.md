@@ -47,7 +47,7 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
 - `frontend/about.html` + `src/about/` - public explainer page. Each section is
   plain English first, then a collapsible "For developers" block. Update it
   whenever behavior it describes changes (data source, statuses, AI, roadmap).
-- `world_feed.py` - WORLDWIDE (in progress). OpenSky global states every
+- `world_feed.py` - WORLDWIDE (done, steps 1-5). OpenSky global states every
   `poll_interval()` (4 credits/call: 90 s with an account, 900 s anonymous),
   converted to the same snapshot field names (no type/registration), held in
   `WorldStore` with a 5-degree grid index. `query(bbox, limit)` handles the
@@ -64,7 +64,8 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   format [done], (3) MapLibre-native aircraft layers replacing Leaflet [done;
   view messages may carry `keep: [icao24]` so the selected plane survives
   thinning], (4) Ask Flive region tools via OurAirports [done],
-  (5) About/README "scaling to the world" section.
+  (5) About/README "scaling to the world" section [done; keep its numbers
+  current if feeds, caps or intervals change].
 - `airports.py` + `data/airports.csv` - OurAirports (public domain) airports
   with scheduled service (3,265), built by `scripts/build_airports.py`:
   `find()` by code/name/city, `nearest()`, `describe_position()`.

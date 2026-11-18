@@ -73,25 +73,65 @@ track), so thousands of worldwide planes stay smooth.
 - `/about.html` is the project's explainer: plain-language sections with
   collapsible "For developers" detail, for both general readers and engineers.
 
-## Worldwide (in progress)
+## Scaling to the whole world
 
-Boston stays on the fast 5 s adsb.fi feed. A second, slower feed pulls every
-aircraft on Earth from OpenSky's `/states/all` (`world_feed.py`): about 5,000–
-15,000 aircraft and ~0.7 MB per call. Each global call costs 4 OpenSky credits, so
-the interval follows the daily budget: every ~90 s with a free OpenSky account,
-every 15 minutes anonymously. World snapshots stay in memory, in a grid index
-for fast map-view queries, and are never logged.
+Flive started as a 40 nm circle around Logan with about 15 aircraft. It now shows
+every aircraft OpenSky tracks worldwide, typically 5,000–6,000 at the quietest hour
+in this coverage (measured at ~06:30 UTC) and more at peak, without giving up the
+detailed Boston view. Five decisions made that work on free data and a single small
+server:
 
-Each browser only gets the aircraft in its map view: the page sends its map
-bounds over the WebSocket (`{"type":"view","bbox":[...]}`) and the server
-replies with compact rows (arrays plus a field list, ~4x smaller than objects)
-for that area, capped at 2,000 and thinned evenly when zoomed out. A whole-world
-view is ~160 KB per update instead of the full ~700 KB, and a region is a few
-KB. Pages that never send a view keep getting only the Boston feed.
+**1. Two feeds at two speeds.** Boston keeps adsb.fi every 5 s (its keyless limit is
+1 request/s). The rest of the world comes from OpenSky's `/states/all`, the only free
+source with a whole-planet snapshot in one request. Each global call costs 4 credits
+of a 4,000/day budget, so `world_feed.poll_interval()` waits 90 s between calls with an
+account (15 min anonymously). Everything Logan-specific (statuses, landing order, logs,
+predictions) stays on the fast feed.
 
-The map draws them all with MapLibre on the GPU, globe view included, and Ask
-Flive can answer about any airport or region. Debug endpoints:
-`GET /api/world/stats`, `GET /api/world?bbox=west,south,east,north`.
+| | Boston | World |
+|---|---|---|
+| Source | adsb.fi (readsb JSON) | OpenSky `/states/all` |
+| Refresh | 5 s | 90 s (900 s anonymous) |
+| Size per fetch | ~5 KB, ~15 aircraft | ~675 KB, ~5,200 aircraft |
+| Logged | every 15 s (~30 MB/day) | never (would be ~4 GB/day at 15 s) |
+| Type / registration | yes | no (OpenSky doesn't send them) |
+
+**2. One poller, any number of viewers.** Only the server talks to data providers, so
+a thousand visitors cost adsb.fi and OpenSky exactly as much as one.
+
+**3. Each viewer gets only their map view.** The world snapshot goes into a 5° grid
+index (built in ~16 ms for 5,000 aircraft; area queries take well under a
+millisecond). The page sends its visible bounds over the WebSocket and gets back:
+- rows from a box 25% larger than the screen, so short pans don't run off the data
+- compact arrays plus a field list: 4.6× smaller than JSON objects, about 70 bytes per
+  aircraft
+- a cap of 2,000 rows when zoomed out, thinned round-robin across grid cells so every
+  region keeps planes, airborne first
+- the selected plane always included (`keep`), so it never vanishes when thinned
+
+A whole-world view is ~140 KB per update instead of ~630 KB of objects, and a regional
+view is ~10 KB. Pages that never send a view still get only the Boston feed.
+
+**4. Draw on the GPU.** Leaflet makes one HTML element per plane, which falls over at
+thousands. MapLibre draws aircraft as symbol layers: one plane shape stored as a
+signed distance field (SDF), recolored and rotated per plane by the GPU. Boston planes
+glide every 0.5 s (dead reckoning, capped at 20 s), world planes every 1 s (capped at
+120 s, since their data is ~90 s apart). Zoomed out, the map becomes a globe.
+
+**5. Make the AI world-aware without making it guess.** Ask Flive gets worldwide tools
+(`aircraft_near` any airport or city, `world_summary` by region, worldwide
+`get_aircraft`) backed by 3,265 OurAirports airports. Tool results describe positions
+relative to the nearest airport, and the prompt requires a caveat on worldwide counts.
+
+**Known limits.** OpenSky relies on volunteer receivers: Europe and North America are
+well covered, oceans and much of Africa, Asia and South America much less, so real
+global totals are higher than Flive shows (commercial trackers add satellite and radar
+data). World positions can be up to ~90 s old before gliding takes over. Faster or
+denser worldwide data would mean running a receiver (feeder accounts get more credits)
+or a paid API such as FlyItalyADSB; `world_feed.py` is one module, so swapping it is
+contained.
+
+Debug endpoints: `GET /api/world/stats`, `GET /api/world?bbox=west,south,east,north`.
 
 ## Ask Flive
 

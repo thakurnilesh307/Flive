@@ -7,6 +7,7 @@ const SECTIONS = [
   ["what", "What you're looking at"],
   ["data", "Where the data comes from"],
   ["pipeline", "Signal to screen"],
+  ["scaling", "Scaling to the whole world"],
   ["smooth", "Why planes glide"],
   ["status", "Guessing what a plane is doing"],
   ["ask-flive", "Ask Flive, the AI"],
@@ -123,6 +124,12 @@ function AskDiagram() {
 
 export default function About() {
   const [active, setActive] = useState<string>("what");
+
+  // The browser tries to jump to #anchor before React has rendered the page; redo it once mounted.
+  useEffect(() => {
+    const id = decodeURIComponent(location.hash.slice(1));
+    if (id) document.getElementById(id)?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+  }, []);
 
   useEffect(() => {
     const obs = new IntersectionObserver(
@@ -260,8 +267,62 @@ export default function About() {
                 <li>Snapshots are broadcast over a WebSocket at <code>/ws</code>. New viewers get the latest snapshot immediately.</li>
                 <li>Every third snapshot (every 15 s) is appended to <code>logan_*.jsonl</code>. These logs are the training and evaluation data for the prediction work below.</li>
                 <li>The React + TypeScript frontend (Vite) is served as static files from the same server.</li>
-                <li><b>Worldwide:</b> a second poller fetches OpenSky <code>/states/all</code> (4 credits per call; every 90 s with an account, 15 min anonymously) into an in-memory 5° grid. Each page sends its map bounds over the WebSocket and gets only the aircraft in view as compact arrays, capped at 2,000 and thinned evenly when zoomed out (whole world ≈ 160 KB instead of ≈ 700 KB). The selected plane is always included. World data is never logged.</li>
-                <li><b>Rendering:</b> MapLibre GL draws aircraft as GPU symbol layers (one recolorable SDF plane icon, rotated by track), so thousands of planes stay smooth; globe projection when zoomed out.</li>
+                <li><b>Worldwide:</b> a second, slower poller covers the rest of the planet. See <a href="#scaling">Scaling to the whole world</a>.</li>
+              </ul>
+            </Dev>
+          </Section>
+
+          <Section id="scaling" kicker="Scale" title="Scaling to the whole world">
+            <p>
+              Flive began as a circle around Boston with about 15 planes. Zoom out now and it shows every plane the OpenSky
+              Network can see, usually 5,000 to 6,000 even at the quietest hour, and more when the world is busy. Five
+              choices made that possible on free data and one small server:
+            </p>
+            <ol className="steps">
+              <li>
+                <b>Two speeds.</b> Boston updates every 5 seconds from adsb.fi. The rest of the world updates about every
+                90 seconds from OpenSky, which allows a limited number of whole-planet requests per day. Everything about
+                landings at Logan stays on the fast feed.
+              </li>
+              <li>
+                <b>One fetch for everyone.</b> Only Flive&apos;s server asks for data, so a thousand visitors cost the data
+                networks the same as one.
+              </li>
+              <li>
+                <b>You only get what you&apos;re looking at.</b> Your browser tells the server which part of the map is on
+                screen, and the server sends just those planes in a compact format. Zoomed all the way out it sends an even
+                sample of 2,000 planes across every region, and the plane you&apos;ve selected is always included.
+              </li>
+              <li>
+                <b>Drawn by your graphics card.</b> Thousands of planes are drawn directly on the GPU instead of as
+                individual page elements, so panning stays smooth. Zoomed out, the map becomes a globe.
+              </li>
+              <li>
+                <b>An AI that knows the world.</b> Ask Flive can answer about any airport or city, using a free database of
+                3,265 airports, and it says when worldwide numbers are incomplete.
+              </li>
+            </ol>
+            <p>
+              <b>What it can&apos;t do (yet):</b> the volunteer receivers behind OpenSky cover Europe and North America well,
+              but oceans and much of Africa, Asia and South America much less. Real worldwide totals are higher than Flive
+              shows, and planes outside Boston can be up to a minute and a half old before the map glides them forward.
+            </p>
+            <Dev title="For developers: the numbers">
+              <table className="rules">
+                <thead><tr><th></th><th>Boston</th><th>World</th></tr></thead>
+                <tbody>
+                  <tr><td>Source</td><td>adsb.fi (readsb JSON, 1 req/s keyless)</td><td>OpenSky <code>/states/all</code> (4 credits/call, 4,000/day)</td></tr>
+                  <tr><td>Refresh</td><td>5 s</td><td>90 s with an account, 900 s anonymous</td></tr>
+                  <tr><td>Per fetch</td><td>~5 KB, ~15 aircraft</td><td>~675 KB, ~5,200 aircraft</td></tr>
+                  <tr><td>Logged</td><td>every 15 s (~30 MB/day)</td><td>never (would be ~4 GB/day at 15 s)</td></tr>
+                  <tr><td>Glide</td><td>0.5 s tick, capped at 20 s</td><td>1 s tick, capped at 120 s</td></tr>
+                </tbody>
+              </table>
+              <ul>
+                <li><b>Index:</b> 5° grid built in ~16 ms for ~5,000 aircraft; viewport queries well under 1 ms; antimeridian handled.</li>
+                <li><b>Protocol:</b> the page sends <code>{"{"}"type":"view","bbox":[w,s,e,n],"keep":[icao24]{"}"}</code>; the server replies at once and after every world refresh with rows from a box padded 25%, as arrays plus a field list (4.6× smaller than objects, ~70 bytes per aircraft), capped at 2,000 with round-robin thinning across cells (airborne first). Whole world ≈ 140 KB vs ≈ 630 KB as objects; a region ≈ 10 KB.</li>
+                <li><b>Rendering:</b> MapLibre symbol layers with one SDF plane image recolored by feature properties; two GeoJSON sources so Boston and world can tick at different rates.</li>
+                <li><b>Swappable source:</b> <code>world_feed.py</code> is one module; a receiver-fed account (8,000 credits, ~45 s) or a paid whole-world API would replace it without touching the protocol or the map.</li>
               </ul>
             </Dev>
           </Section>

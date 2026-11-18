@@ -8,8 +8,9 @@ This feed only adds every other aircraft on Earth, at a much slower rate:
   OpenSky charges 4 credits per global call. Standard account: 4,000/day
   -> one call every ~86 s. Anonymous: 400/day -> every ~15 min.
 
-World snapshots are never logged (tens of GB/day). They live in memory in a
-grid index so "which aircraft are in this map view" is cheap.
+World snapshots are never logged (~675 KB each: ~4 GB/day at the Boston log's
+15 s cadence). They live in memory in a grid index so "which aircraft are in
+this map view" is cheap.
 """
 import math
 import os
