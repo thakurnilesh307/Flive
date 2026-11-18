@@ -389,9 +389,13 @@ export default function About() {
                 arrival records, it found 97% of Logan arrivals, and every landing it found was real.
               </li>
               <li>
-                <b>Predict the landing order.</b> For planes still in the air, predict which order they&apos;ll land in and when.
-                The simplest version is distance divided by speed. A better one would learn from history, like how long planes
-                at a certain distance and altitude usually take to land given which runways are in use.
+                <b>Predict when each plane lands (done, and live).</b> The simple guess is distance divided by speed, but planes
+                don&apos;t fly straight in: they fly the approach pattern for whichever runway is in use, so that guess was almost
+                5 minutes off on average. I trained a model on a week of past Logan traffic (about 3,500 landings, downloaded
+                from adsb.lol&apos;s open archives) and tested it on days it had never seen: it&apos;s about 1 minute off on
+                average, and under 3 minutes off even 20 minutes before landing. You can see it on the map: click an arriving
+                plane, or open the Logan arrivals tab. The first time I watched it live, five arrivals landed between 12 seconds
+                and 2.6 minutes from what it predicted.
               </li>
               <li>
                 <b>Check it against what really happened.</b> Every night, compare the predictions with real landings, both
@@ -399,14 +403,14 @@ export default function About() {
                 parts where it&apos;s wrong.
               </li>
             </ol>
-            <Dev title="Technical details: data and how I'll evaluate it">
+            <Dev title="Technical details: the model and how it's tested">
               <ul>
-                <li><b>Training data:</b> the 15 s JSONL logs, split into per-flight tracks keyed by <code>icao24</code> + callsign.</li>
-                <li><b>Event labels:</b> touchdown and liftoff from <code>on_ground</code> changes; runway from matching the final-approach track and position to Logan&apos;s runway headings and thresholds.</li>
-                <li><b>Baseline:</b> straight-line time to go (distance / groundspeed). Anything learned has to beat this to count.</li>
-                <li><b>Learned model idea:</b> regression of time-to-touchdown on distance, altitude, speed, vertical rate, bearing and active runway configuration, tested on held-out days.</li>
-                <li><b>Metrics:</b> mean absolute error of predicted landing time (minutes) at fixed horizons like 5, 10 and 20 minutes out, plus how well the predicted order matches the real one (rank correlation).</li>
-                <li><b>Ground truth:</b> nightly OpenSky <code>/flights/arrival</code> and <code>/departure</code> queries for the previous day (OAuth2 client credentials, separate credit budget).</li>
+                <li><b>Data:</b> <code>scripts/import_history.py</code> streams adsb.lol&apos;s daily archives (ODbL, ~3.5 GB/day worldwide) and keeps only traces within 45 nm of Logan; <code>events.py</code> turns them (and the live logs) into landings with runway; checked against OpenSky&apos;s arrival records at 98% recall and 99% precision.</li>
+                <li><b>Rows:</b> each landing walked back 30 minutes, one row every 30 s: distance and bearing from Logan, altitude, speed, vertical rate, heading vs the runway in use, arrival-flow traffic, time of day, and the label (seconds to touchdown). The runway it actually landed on is NOT a feature (you don&apos;t know it in advance); the runway in use over the previous 30 minutes is. The same <code>feature_row()</code> builds inputs for training and live serving.</li>
+                <li><b>Model:</b> scikit-learn <code>HistGradientBoostingRegressor</code> with absolute-error loss, plus 10th/90th percentile models for the &quot;likely&quot; range, widened by a factor calibrated on held-out days so it holds about 80% of real landings.</li>
+                <li><b>Test:</b> leave-one-day-out (rows 30 s apart are near-duplicates, so a random split would flatter it). Held-out error: 1.01 min vs 4.85 for distance/speed; 0.40 / 1.09 / 2.90 min at 5 / 10 / 20 minutes out; 68% within a minute. Biggest inputs: altitude, then position relative to the runway in use.</li>
+                <li><b>Live:</b> <code>eta.py</code> keeps 40 minutes of the 5 s feed, detects the runway in use, and predicts only for aircraft that look like Logan arrivals (not climbing, not just off the ground, not helicopters: the model only ever saw planes that landed). Predictions are logged so they can be scored against real landings.</li>
+                <li><b>Next:</b> score the logged predictions every night against detected landings and OpenSky arrivals, and import more history so every runway setup and busy period is covered.</li>
               </ul>
             </Dev>
           </Section>

@@ -116,6 +116,16 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   (gitignored). Trace point: [dt, lat, lon, alt_ft|"ground", gs, track, flags,
   vrate, ac{flight,category}, ...]. `events.load_all()` merges logs + history.
   History altitudes are raw pressure altitude (no historical QNH yet).
+- `dataset.py` / `train_eta.py` / `eta.py` - step 5 landing-time model.
+  `feature_row()` is THE feature function for training and live (never fork
+  it). Raw pressure altitude everywhere for the model (history has no QNH).
+  Model bundle `data/eta_model.joblib` (gitignored): model + 10/90 quantile
+  models + `range_widen` calibrated on held-out days. Live: arrivals only
+  (`is_arrival`: not climbing, not on ground in last 5 min, not helicopters),
+  adds `landing_at`, `landing_lo_at`, `landing_hi_at` (unix s) to Boston
+  snapshot aircraft and `runway_in_use` to the snapshot; logged. `GET
+  /api/eta/status`. Retrain after importing more history. Last: 1.01 min
+  held-out MAE vs 4.85 straight line (3,520 landings, leave-one-day-out).
 - `explore.py` - (planned) pandas/matplotlib analysis of the JSONL logs.
 
 ## Snapshot format (do not change field names without updating all consumers)
@@ -175,6 +185,7 @@ Units are SI internally (meters, m/s). Convert to ft/kt/fpm only for display.
    (runway, touchdown/liftoff time) from approach track and on_ground changes.
 5. Scheduler: predicted landing sequence vs actual; nightly comparison against
    OpenSky arrivals. This is the model-vs-reality story for the blog post.
+   [model + live predictions done; nightly scoring of logged predictions next]
 6. Deploy (always-on instance, not a sleeping free tier) + README with GIF.
 
 ## How I want to work

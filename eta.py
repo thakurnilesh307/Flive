@@ -30,11 +30,19 @@ DETECT_EVERY_S = 30
 MAX_ETA_S = 35 * 60
 
 
-def is_arrival(s, status):
+def is_arrival(s, status, recently_on_ground=False):
     """Does this aircraft look like it's coming in to land at Logan?
+    - never if it was on the ground in the last few minutes or is climbing: that's a
+      departure (right at the airport every direction "points at Logan", so a plane
+      that just lifted off can pass the approach rule; found by checking live
+      predictions against real touchdowns),
     - the existing Logan statuses "on approach" / "inbound", or
     - below 10,000 ft within 30 nm and descending (catches planes on a downwind or
-      base leg that aren't pointed at Logan yet), but not climbing out."""
+      base leg that aren't pointed at Logan yet)."""
+    if recently_on_ground or (s.vs_fpm is not None and s.vs_fpm > 300):
+        return False
+    if s.category == 8:   # helicopters use helipads, not the runways the model learned from
+        return False
     if status in ("approach", "inbound"):
         return True
     if status == "departing" or s.alt_ft is None:
@@ -102,11 +110,16 @@ class LivePredictor:
 
     def seed_from_logs(self):
         """Replay the newest log so the runway in use is known right after a restart."""
-        paths = sorted(glob.glob(str(HERE / "logan_*.jsonl")))
-        if not paths:
-            return
         cutoff = time.time() - KEEP_S
-        with open(paths[-1], encoding="utf-8") as f:
+        # Every log written to in the last 40 min (each server run starts a new file,
+        # so "just the newest" would be the empty one this run just created).
+        paths = [p for p in sorted(glob.glob(str(HERE / "logan_*.jsonl"))) if Path(p).stat().st_mtime >= cutoff]
+        for path in paths:
+            self._replay(path, cutoff)
+        self._detect(time.time(), force=True)
+
+    def _replay(self, path, cutoff):
+        with open(path, encoding="utf-8") as f:
             for line in f:
                 try:
                     snap = json.loads(line)
@@ -118,7 +131,6 @@ class LivePredictor:
                     s = _sample(a)
                     if s and a.get("icao24"):
                         self._add(a["icao24"], s)
-        self._detect(time.time(), force=True)
 
     def _detect(self, now, force=False):
         if not force and now - self.last_detect < DETECT_EVERY_S:
@@ -168,7 +180,9 @@ class LivePredictor:
                 continue
             d = dataset.dist_nm(s.lat, s.lon)
             status = traffic.classify(a, d, s.alt_ft, s.gs_kt, s.vs_fpm)
-            if not is_arrival(s, status):
+            recent = self.tracks.get(a["icao24"], ())
+            on_ground_lately = any(x.on_ground for x in recent if x.t >= s.t - 300)
+            if not is_arrival(s, status, on_ground_lately):
                 continue
             rows.append(dataset.feature_row(s, now, len(flow - {a["icao24"]}), cfg, n_landings))
             targets.append((a, s))

@@ -223,6 +223,8 @@ Coverage on a live check: 99% of worldwide aircraft got a type, 86% an operator.
 | `events.py` | Landing/takeoff detection with runway assignment from the logs (step 4) |
 | `scripts/validate_events.py` | Scores `events.py` against OpenSky's KBOS arrival records |
 | `scripts/import_history.py` | Streams adsb.lol daily archives, keeps Boston-area traces |
+| `dataset.py`, `train_eta.py` | Training rows from detected landings; model training and leave-one-day-out scoring |
+| `eta.py` | Live landing-time predictions in the server |
 | `scripts/build_aircraft_db.py` | Downloads the aircraft DB and the OpenFlights airline list into `data/` |
 | `poll_logan.py` | Retired OpenSky poller; its OAuth2 code will be reused for nightly arrival checks |
 | `.env.example` | Template for local secrets (`.env` is gitignored) |
@@ -261,13 +263,63 @@ detected landings confirmed). The 5 misses: two touchdowns inside gaps in the ol
 logs, a helicopter, a low pass and an arrival outside our data. Our touchdown time
 is a median 10 s after OpenSky's "last seen".
 
+## Landing-time model (step 5)
+
+"This plane will land in about 6 minutes (likely 5 to 8)", for every arrival.
+
+```powershell
+python -m pip install -r requirements-ml.txt
+python scripts/import_history.py 7    # past week from adsb.lol (~6 min/day)
+python events.py                       # landings and takeoffs with runway
+python dataset.py                      # -> data/eta_dataset.csv
+python train_eta.py                    # -> data/eta_model.joblib (the server loads it)
+```
+
+- **Training rows:** every detected landing, walked back 30 minutes, one row
+  every 30 s: distance and direction from Logan, altitude, speed, vertical rate,
+  heading vs the runway in use, traffic in the arrival flow, time of day ->
+  seconds until touchdown. Only information available at that moment: the
+  runway it actually landed on is not a feature; the runway Logan was using in
+  the previous 30 minutes is. `dataset.feature_row()` is shared with the live
+  server so training and serving can't drift.
+- **Model:** scikit-learn `HistGradientBoostingRegressor` (absolute-error loss),
+  plus 10th/90th percentile models for the "likely" range, widened by a factor
+  calibrated on held-out days so it really holds ~80% of landings.
+- **Test:** leave-one-day-out (positions 30 s apart are near-duplicates, so a
+  random split would flatter it).
+
+Results on the past week (3,520 landings, 104,599 rows, each day predicted by a
+model that never saw it):
+
+| | overall | 5 min out | 10 min out | 20 min out | within 1 min |
+| --- | --- | --- | --- | --- | --- |
+| Straight line (distance / speed) | 4.85 min | 1.32 | 5.67 | 13.37 | 30% |
+| Straight line x fitted factor | 3.42 min | | | | |
+| **Model** | **1.01 min** | **0.40** | **1.09** | **2.90** | **68%** |
+
+What it learned matters most: altitude (a plane 15 nm out at 10,000 ft is far
+from landing; at 2,000 ft it's nearly down), then where it is relative to the
+runway in use. Lesson from the first run: with one day of northeast-wind
+landings (runway 4L/4R) held out, error doubled; the model only knows the
+weather it has seen, so more history = better.
+
+**Live:** `eta.py` keeps 40 minutes of the Boston feed, detects the runway in
+use with the same detector, and predicts for aircraft that look like Logan
+arrivals (not climbing, not just off the ground, not helicopters). Predictions
+go out as `landing_at` / `landing_lo_at` / `landing_hi_at` on each aircraft,
+show in the detail panel and the Logan arrivals tab, drive Ask Flive's landing
+order, and are written to the logs for scoring. First live check: 5 arrivals
+predicted 2 to 15 minutes ahead landed 0.2 to 2.6 minutes from the prediction,
+4 of 5 inside the likely range. That check also caught departures getting
+"predictions" right after liftoff, now excluded.
+
 ## Roadmap
 
 1. Repo hygiene
 2. React + TypeScript frontend: aircraft list, detail panel
 3. "Ask Flive": chat over the live state using a local LLM with tool calling
 4. Arrival/departure detection per flight (runway, touchdown/liftoff time) - done (offline, `events.py`)
-5. Scheduler: predicted landing sequence vs. actual, checked nightly against OpenSky arrivals
+5. Landing-time model: predicted landing times and order vs. actual - model and live predictions done; nightly scoring next
 6. Always-on deployment
 
 ## Data
