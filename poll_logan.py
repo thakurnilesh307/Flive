@@ -21,6 +21,8 @@ from dotenv import load_dotenv
 # Real environment variables still win over .env values.
 load_dotenv(Path(__file__).parent / ".env")
 
+import opensky_auth  # noqa: E402  (token handling shared with the world feed)
+
 # ~35 nm box around KBOS (42.3656, -71.0096)
 BBOX = {"lamin": 41.80, "lamax": 42.95, "lomin": -71.80, "lomax": -70.20}
 # Box is ~1.8 sq deg = 1 credit/call. Standard tier = 4,000 credits/day,
@@ -29,42 +31,20 @@ POLL_SECONDS = 30
 OUTFILE = f"logan_{datetime.now():%Y%m%d_%H%M}.jsonl"
 
 STATES_URL = "https://opensky-network.org/api/states/all"
-TOKEN_URL = ("https://auth.opensky-network.org/auth/realms/opensky-network"
-             "/protocol/openid-connect/token")
 FIELDS = ["icao24", "callsign", "origin_country", "time_position", "last_contact",
           "lon", "lat", "baro_alt_m", "on_ground", "velocity_ms", "track_deg",
           "vert_rate_ms", "sensors", "geo_alt_m", "squawk", "spi", "pos_source",
           "category"]  # category: 4=Large, 5=757, 6=Heavy, etc. (needs extended=1)
 
 CLIENT_ID = os.getenv("OPENSKY_CLIENT_ID")
-CLIENT_SECRET = os.getenv("OPENSKY_CLIENT_SECRET")
-_token, _token_expiry = None, 0.0
-
-
-def get_headers():
-    """Fetch/refresh an OAuth2 token if credentials exist."""
-    global _token, _token_expiry
-    if not (CLIENT_ID and CLIENT_SECRET):
-        return {}
-    if time.time() > _token_expiry - 60:
-        r = requests.post(TOKEN_URL, data={
-            "grant_type": "client_credentials",
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
-        }, timeout=10)
-        r.raise_for_status()
-        body = r.json()
-        _token = body["access_token"]
-        _token_expiry = time.time() + body.get("expires_in", 1800)
-    return {"Authorization": f"Bearer {_token}"}
+get_headers = opensky_auth.auth_headers
 
 
 def poll_once():
-    global _token_expiry
     params = {**BBOX, "extended": 1}
     r = requests.get(STATES_URL, params=params, headers=get_headers(), timeout=15)
     if r.status_code == 401:
-        _token_expiry = 0
+        opensky_auth.invalidate()
         r = requests.get(STATES_URL, params=params, headers=get_headers(), timeout=15)
     remaining = r.headers.get("X-Rate-Limit-Remaining")
     if remaining:

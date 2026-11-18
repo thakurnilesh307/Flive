@@ -69,6 +69,20 @@ recolored to navy in `frontend/src/basemap.ts`.
 - `/about.html` is the project's explainer: plain-language sections with
   collapsible "For developers" detail, for both general readers and engineers.
 
+## Worldwide (in progress)
+
+Boston stays on the fast 5 s adsb.fi feed. A second, slower feed pulls every
+aircraft on Earth from OpenSky's `/states/all` (`world_feed.py`): about 5,000–
+15,000 aircraft and ~0.7 MB per call. Each global call costs 4 OpenSky credits, so
+the interval follows the daily budget: every ~90 s with a free OpenSky account,
+every 15 minutes anonymously. World snapshots stay in memory, in a grid index
+for fast map-view queries, and are never logged.
+
+So far this is server-side only (`GET /api/world/stats`,
+`GET /api/world?bbox=west,south,east,north`). Next: send each browser only the
+aircraft in its map view, then move aircraft rendering to MapLibre (GPU) so
+thousands of planes stay smooth.
+
 ## Ask Flive
 
 A chat panel that answers questions about live traffic using a local LLM

@@ -7,10 +7,11 @@ deployed publicly with a blog post about how it was built.
 ## Architecture
 
 ```
-adsb.fi --(every 5s)--> server.py (FastAPI) --(WebSocket /ws)--> browser
-                           |
-                           +-- keeps latest snapshot in memory
-                           +-- logs a snapshot every 15s to logan_*.jsonl
+adsb.fi --(every 5s, 40 nm)--> server.py (FastAPI) --(WebSocket /ws)--> browser
+                                  |
+                                  +-- keeps latest snapshot in memory
+                                  +-- logs a snapshot every 15s to logan_*.jsonl
+OpenSky /states/all --(world, 90s auth / 900s anon)--> WorldStore (memory only, never logged)
 OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
 ```
 
@@ -40,6 +41,18 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
 - `frontend/about.html` + `src/about/` - public explainer page. Each section is
   plain English first, then a collapsible "For developers" block. Update it
   whenever behavior it describes changes (data source, statuses, AI, roadmap).
+- `world_feed.py` - WORLDWIDE (in progress). OpenSky global states every
+  `poll_interval()` (4 credits/call: 90 s with an account, 900 s anonymous),
+  converted to the same snapshot field names (no type/registration), held in
+  `WorldStore` with a 5-degree grid index. `query(bbox, limit)` handles the
+  antimeridian and thins evenly across cells when over the limit. Boston stays
+  on the 5 s adsb.fi feed for statuses, Ask Flive, logs and predictions.
+  Endpoints: `GET /api/world/stats`, `GET /api/world?bbox=w,s,e,n&limit=`.
+  Plan: (1) feed + store [done], (2) viewport subscription on /ws with compact
+  format, (3) MapLibre-native aircraft layer replacing Leaflet (confirm with
+  user before starting), (4) Ask Flive region tools via OurAirports,
+  (5) About/README "scaling to the world" section.
+- `opensky_auth.py` - shared OpenSky OAuth2 token handling (thread-safe).
 - `poll_logan.py` - old OpenSky state-vector logger. Retired for live data; its
   OAuth2 token code is reusable for the OpenSky flights endpoints.
 - `explore.py` - (planned) pandas/matplotlib analysis of the JSONL logs.
@@ -68,9 +81,11 @@ Units are SI internally (meters, m/s). Convert to ft/kt/fpm only for display.
   7,200 feeder). Usable as a fallback via `ADSB_URL` + `ADSB_API_KEY` at a
   matching slower interval, not at 5s.
 - OpenSky: OAuth2 client credentials only (env vars `OPENSKY_CLIENT_ID`,
-  `OPENSKY_CLIENT_SECRET`). Use only for `/flights/arrival` and
-  `/flights/departure` (previous day only, nightly batch, ~30 credits/query,
-  separate budget from /states).
+  `OPENSKY_CLIENT_SECRET`). Used for the worldwide `/states/all` feed (states
+  bucket: 4,000 credits/day standard, 4 per global call, never poll faster
+  than `world_feed.poll_interval()`) and `/flights/arrival` + `/departure`
+  (previous day only, nightly batch, separate flights bucket). Non-commercial
+  use only; commercial use needs an OpenSky licence.
 - Never hardcode or print secrets. Load from `.env` (python-dotenv). `.env` and
   `*.jsonl` must stay in `.gitignore`.
 

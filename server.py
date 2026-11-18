@@ -11,6 +11,7 @@ The UI is the React app in frontend/, served from frontend/dist once built.
 """
 import asyncio
 import json
+import os
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
@@ -26,6 +27,7 @@ HERE = Path(__file__).parent
 load_dotenv(HERE / ".env")  # before importing modules that read env vars
 
 import ask  # noqa: E402
+import world_feed  # noqa: E402
 from adsb_feed import RateLimited, poll_once  # noqa: E402
 
 POLL_SECONDS = 5        # provider allows 1 req/s; 5s is plenty for a live map
@@ -83,13 +85,45 @@ async def poller():
         await asyncio.sleep(delay)
 
 
+world = world_feed.WorldStore()
+
+
+async def world_poller():
+    """Whole-world snapshot from OpenSky at a credit-safe interval. Not logged."""
+    failures = 0
+    while True:
+        delay = world_feed.poll_interval()
+        try:
+            snap, credits = await asyncio.to_thread(world_feed.poll_once)
+            world.update(snap, credits)
+            failures = 0
+            print(f"World: {len(snap['aircraft'])} aircraft, {snap['bytes'] // 1024} KB, "
+                  f"credits left {credits if credits is not None else '?'}")
+        except RateLimited as e:
+            failures += 1
+            delay = max(delay, e.retry_after or 0, min(3600, 300 * failures))
+            world.last_error = f"rate limited; next try in {delay}s"
+            print(f"World: rate limited, waiting {delay}s")
+        except Exception as e:
+            failures += 1
+            delay = max(delay, min(MAX_BACKOFF, 30 * 2 ** failures))
+            world.last_error = str(e)[:200]
+            print(f"World: poll failed ({e}), retrying in {delay}s")
+        await asyncio.sleep(delay)
+
+
 @asynccontextmanager
 async def lifespan(app):
     task = asyncio.create_task(poller())
+    world_task = None
+    if os.getenv("WORLD_FEED", "on").lower() != "off":
+        world_task = asyncio.create_task(world_poller())
     # Load the LLM in the background so the first question isn't a cold start.
     asyncio.create_task(asyncio.to_thread(backend.warm_up))
     yield
     task.cancel()
+    if world_task:
+        world_task.cancel()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -160,6 +194,29 @@ async def ask_endpoint(req: AskRequest, request: Request):
 async def ask_status():
     ok = await asyncio.to_thread(backend.available)
     return {"available": ok, "model": backend.model}
+
+
+# --- World feed -------------------------------------------------------------
+
+@app.get("/api/world/stats")
+async def world_stats():
+    return world.stats()
+
+
+@app.get("/api/world")
+async def world_view(bbox: str, limit: int = 2000):
+    """Aircraft in a map view: bbox=west,south,east,north (degrees). Step 2 moves
+    this onto the WebSocket; this endpoint is for testing and debugging."""
+    try:
+        west, south, east, north = (float(v) for v in bbox.split(","))
+    except ValueError:
+        raise HTTPException(422, "bbox must be west,south,east,north")
+    if not (-180 <= west <= 180 and -180 <= east <= 180 and -90 <= south <= north <= 90):
+        raise HTTPException(422, "bbox out of range")
+    aircraft, total = world.query(west, south, east, north, max(1, min(limit, 5000)))
+    snap = world.snapshot
+    return {"api_time": snap["api_time"] if snap else None, "total_in_view": total,
+            "returned": len(aircraft), "aircraft": aircraft}
 
 
 # The built React app. Mounted last so /ws above takes precedence.
