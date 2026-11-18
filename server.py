@@ -2,10 +2,12 @@
 Flive server: polls the ADS-B provider once, broadcasts to every connected browser.
 
   python -m pip install -r requirements.txt
+  cd frontend; npm install; npm run build; cd ..
   python -m uvicorn server:app
   -> open http://127.0.0.1:8000
 
 Live data comes from adsb_feed.py (adsb.fi by default, see .env.example).
+The UI is the React app in frontend/, served from frontend/dist once built.
 """
 import asyncio
 import json
@@ -15,7 +17,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 HERE = Path(__file__).parent
 load_dotenv(HERE / ".env")  # before importing modules that read env vars
@@ -23,8 +26,10 @@ load_dotenv(HERE / ".env")  # before importing modules that read env vars
 from adsb_feed import RateLimited, poll_once  # noqa: E402
 
 POLL_SECONDS = 5        # provider allows 1 req/s; 5s is plenty for a live map
-LOG_SECONDS = 15        # log less often than we poll: OneDrive folder, big files
+LOG_SECONDS = 15        # log less often than we poll: keeps log files small
 MAX_BACKOFF = 300
+
+DIST = HERE / "frontend" / "dist"
 
 LOG = HERE / f"logan_{time.strftime('%Y%m%d_%H%M')}.jsonl"
 
@@ -85,11 +90,6 @@ async def lifespan(app):
 app = FastAPI(lifespan=lifespan)
 
 
-@app.get("/")
-async def index():
-    return FileResponse(HERE / "static" / "index.html")
-
-
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
     await ws.accept()
@@ -101,3 +101,14 @@ async def ws_endpoint(ws: WebSocket):
             await ws.receive_text()   # just keeps the connection open
     except WebSocketDisconnect:
         clients.discard(ws)
+
+
+# The built React app. Mounted last so /ws above takes precedence.
+if DIST.is_dir():
+    app.mount("/", StaticFiles(directory=DIST, html=True), name="ui")
+else:
+    @app.get("/")
+    async def not_built():
+        return HTMLResponse(
+            "<p>Frontend not built yet. Run <code>cd frontend; npm install; "
+            "npm run build</code>, then restart the server.</p>", status_code=503)

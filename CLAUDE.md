@@ -20,11 +20,17 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   around KBOS, no key), sanitizes and converts to the snapshot format below.
   Raises `RateLimited` on 429. Provider is set by `ADSB_URL` / `ADSB_API_KEY`.
 - `server.py` - FastAPI app: background poller task (5s poll, 15s log,
-  exponential backoff on 429 and errors), WebSocket broadcast, serves
-  `static/index.html`.
-- `static/index.html` - currently a live table sorted by distance (textContent
-  only). Planned: Leaflet map, CARTO tiles, rotated plane icons, ATC-style
-  data tags, dead reckoning between updates, stale aircraft fade out.
+  exponential backoff on 429 and errors), WebSocket broadcast, serves the
+  built frontend from `frontend/dist` (mounted last so `/ws` wins).
+- `frontend/` - React + TypeScript (Vite). Leaflet for markers/trail, MapLibre
+  vector basemap (OpenFreeMap `dark` style, recolored in `src/basemap.ts`;
+  CARTO now requires an API key). MapLibre 6 needs `setWorkerUrl` with the
+  worker imported via `?url`, or the worker 404s after bundling. Dead
+  reckoning between updates, stale fade, client-side trails. Status
+  (inbound/approach/departing) in `src/status.ts` is a heuristic placeholder
+  until step 4. Never put provider text into HTML strings (Leaflet divIcons
+  are static markup; tooltips use textContent). Brand: hexagon logo in
+  `src/components/icons.tsx` + `public/favicon.svg`, dark navy only.
 - `poll_logan.py` - old OpenSky state-vector logger. Retired for live data; its
   OAuth2 token code is reusable for the OpenSky flights endpoints.
 - `explore.py` - (planned) pandas/matplotlib analysis of the JSONL logs.
@@ -64,7 +70,9 @@ Units are SI internally (meters, m/s). Convert to ft/kt/fpm only for display.
 - Windows, PowerShell, Microsoft Store Python 3.11.
 - Use `python -m pip ...` and `python -m uvicorn server:app` (Scripts folder is
   not on PATH). PowerShell env vars: `$env:NAME="value"`, not `export`.
-- Project lives in a OneDrive folder: avoid writing large or high-frequency files.
+- Project lives in `C:\dev\Flive` (moved out of OneDrive so node_modules and
+  logs don't sync). Node 24 / npm for the frontend: `cd frontend; npm run build`
+  (or `npm run dev` on :5173 alongside the server on :8000).
 
 ## Roadmap
 
