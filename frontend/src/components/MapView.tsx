@@ -33,6 +33,7 @@ interface Props {
   /** keep the camera centred on the selected plane */
   follow: boolean;
   onFollowChange: (follow: boolean) => void;
+  theme: "dark" | "light";
 }
 
 const STALE_S = 30;              // fade aircraft we haven't heard from in this long
@@ -46,7 +47,15 @@ const MAX_BLEND_DEG = 0.3;
 const FOLLOW_ZOOM = 11;       // clicking a plane zooms in at least this far
 const FLY_IN_MS = 900;        // how long the zoom-in to a clicked plane takes
 const VIEW_REPORT_MAX_MS = 1500; // while following, the map moves every frame: still report the view this often   // corrections bigger than this (~18 nm) are real jumps: snap
-const STYLE_URL = "https://tiles.openfreemap.org/styles/dark";
+const STYLES = {
+  dark: "https://tiles.openfreemap.org/styles/dark",       // recoloured navy in basemap.ts
+  light: "https://tiles.openfreemap.org/styles/positron",
+};
+// Aircraft and trail colours per theme (planes are one white SDF image, recoloured here).
+const PLANE_COLORS = {
+  dark: { sel: "#cfe8ff", ground: "#7b8ba6", air: "#5aa8ff", haloSel: "rgba(61,139,255,0.95)", halo: "rgba(61,139,255,0.45)", trail: "#4da3ff" },
+  light: { sel: "#0b3b8c", ground: "#8592a6", air: "#1d6ae5", haloSel: "rgba(29,106,229,0.55)", halo: "rgba(255,255,255,0.95)", trail: "#1d6ae5" },
+};
 type FC = FeatureCollection<Geometry>;
 
 function estimate(d: Derived, serverNow: number, cap: number): LatLon | null {
@@ -176,7 +185,7 @@ export default function MapView(props: Props) {
   useEffect(() => {
     const map = new GLMap({
       container: divRef.current!,
-      style: STYLE_URL,
+      style: STYLES[live.current.theme],
       center: [KBOS[1], KBOS[0]],
       zoom: 10,
       minZoom: 1.2,
@@ -196,18 +205,23 @@ export default function MapView(props: Props) {
 
     const tip = new Popup({ closeButton: false, closeOnClick: false, offset: 14, className: "ac-tip" });
 
+    // Runs on the first load AND after every theme switch (setStyle wipes our image,
+    // sources and layers, so they're added back here; the event handlers below stay).
+    let wired = false;
     map.on("style.load", () => {
-      restyleBasemap(map);
+      const theme = live.current.theme;
+      const c = PLANE_COLORS[theme];
+      restyleBasemap(map, theme);
       map.setProjection({ type: "globe" });   // globe when zoomed out, flat map when zoomed in
       if (!map.hasImage("plane")) map.addImage("plane", planeImage(), { sdf: true, pixelRatio: 2 });
 
-      map.addSource("trail", { type: "geojson", data: empty() });
-      map.addSource("world", { type: "geojson", data: empty() });
-      map.addSource("local", { type: "geojson", data: empty() });
+      for (const id of ["trail", "world", "local"]) {
+        if (!map.getSource(id)) map.addSource(id, { type: "geojson", data: empty() });
+      }
 
       map.addLayer({
         id: "trail", type: "line", source: "trail",
-        paint: { "line-color": "#4da3ff", "line-width": 2.5, "line-dasharray": [1.5, 2.5], "line-opacity": 0.9 },
+        paint: { "line-color": c.trail, "line-width": 2.5, "line-dasharray": [1.5, 2.5], "line-opacity": 0.9 },
       });
 
       // Shared look for both aircraft layers; data-driven by feature properties.
@@ -225,14 +239,20 @@ export default function MapView(props: Props) {
         "symbol-sort-key": ["case", ["get", "sel"], 2, ["get", "ground"], 0, 1],
       };
       const planePaint: SymbolLayerSpecification["paint"] = {
-        "icon-color": ["case", ["get", "sel"], "#cfe8ff", ["get", "ground"], "#7b8ba6", "#5aa8ff"],
-        "icon-halo-color": ["case", ["get", "sel"], "rgba(61,139,255,0.95)", "rgba(61,139,255,0.45)"],
+        "icon-color": ["case", ["get", "sel"], c.sel, ["get", "ground"], c.ground, c.air],
+        "icon-halo-color": ["case", ["get", "sel"], c.haloSel, c.halo],
         "icon-halo-width": ["case", ["get", "sel"], 3, ["get", "ground"], 0, 1.2],
         "icon-halo-blur": ["case", ["get", "sel"], 2.5, 1.5],
         "icon-opacity": ["case", ["get", "dim"], 0.18, ["get", "stale"], 0.4, 1],
       };
       map.addLayer({ id: "world-planes", type: "symbol", source: "world", layout: planeLayout, paint: planePaint });
       map.addLayer({ id: "local-planes", type: "symbol", source: "local", layout: planeLayout, paint: planePaint });
+
+      ready.current = true;
+      tickLocal();
+      tickWorld();
+      if (wired) return;   // theme switch: handlers are still attached
+      wired = true;
 
       for (const layer of ["world-planes", "local-planes"]) {
         map.on("click", layer, (e: MapLayerMouseEvent) => {
@@ -253,9 +273,6 @@ export default function MapView(props: Props) {
         if (!hit.length) live.current.onSelect(null);
       });
 
-      ready.current = true;
-      tickLocal();
-      tickWorld();
       live.current.onMapReady(map);
       reportView();
     });
@@ -399,6 +416,16 @@ export default function MapView(props: Props) {
   useEffect(() => {
     if (ready.current) redraw.current?.();
   }, [props.aircraft, props.world, props.selectedId, props.dimmed, props.trail]);
+
+  // Theme switch: load the other basemap; "style.load" re-adds the aircraft layers.
+  const firstTheme = useRef(props.theme);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || props.theme === firstTheme.current) return;
+    firstTheme.current = props.theme;
+    ready.current = false;
+    map.setStyle(STYLES[props.theme], { diff: false });
+  }, [props.theme]);
 
   // Clicking a plane (or turning follow back on) flies the camera to it.
   useEffect(() => {

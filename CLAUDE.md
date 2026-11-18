@@ -24,7 +24,8 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   exponential backoff on 429 and errors), WebSocket broadcast, serves the
   built frontend from `frontend/dist` (mounted last so `/ws` wins).
 - `frontend/` - React + TypeScript (Vite) + MapLibre GL only (Leaflet removed).
-  OpenFreeMap `dark` style recolored in `src/basemap.ts` (CARTO needs a key),
+  OpenFreeMap styles (`dark` recolored navy in `src/basemap.ts`, `positron` for
+  light mode; CARTO needs a key),
   globe projection when zoomed out. Aircraft are GPU symbol layers
   (`local-planes` = Boston, redrawn ~30 fps; `world-planes` = world, 4 fps,
   glide capped at 120 s; one requestAnimationFrame loop, and fresh reports
@@ -44,7 +45,11 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   when the map is within 80 nm of KBOS at zoom >= 7. Search also finds
   airports and flies there; the top-bar pill is the airport under the map. Never put provider text into HTML strings (hover
   tips use Popup.setText; KBOS marker is static markup). Brand: hexagon logo in
-  `src/components/icons.tsx` + `public/favicon.svg`, dark navy only.
+  `src/components/icons.tsx` + `public/favicon.svg`. Themes: dark (default,
+  OpenFreeMap `dark` recoloured navy) and light (`positron`), toggle in the top
+  bar, `src/theme.ts` (system default, choice in localStorage), CSS overrides
+  under `[data-theme="light"]`. Switching calls setStyle; MapView's
+  `style.load` handler re-adds the plane image, sources and layers each time.
 - `ask.py` - Ask Flive (step 3): Ollama backend behind `chat(messages, tools)`,
   7 tools taking a `Ctx` (Boston snapshot + derived rows + WorldStore): Boston
   (traffic_summary, list_aircraft, landing_sequence), world (aircraft_near with
@@ -105,6 +110,12 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   landings for aircraft with no ground flag. `scripts/validate_events.py` scores
   it against OpenSky /flights/arrival (one UTC day per request max: a query may
   touch at most 2 day partitions). Last check: 97% recall, 100% precision.
+- `scripts/import_history.py` - past days from adsb.lol globe_history releases
+  (ODbL, ~3.5 GB/day worldwide, split .tar.aa/.ab): streamed, never stored,
+  keeps points within 45 nm of KBOS -> `data/history/YYYY-MM-DD.jsonl.gz`
+  (gitignored). Trace point: [dt, lat, lon, alt_ft|"ground", gs, track, flags,
+  vrate, ac{flight,category}, ...]. `events.load_all()` merges logs + history.
+  History altitudes are raw pressure altitude (no historical QNH yet).
 - `explore.py` - (planned) pandas/matplotlib analysis of the JSONL logs.
 
 ## Snapshot format (do not change field names without updating all consumers)

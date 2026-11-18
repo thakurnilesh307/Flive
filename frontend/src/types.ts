@@ -23,6 +23,10 @@ export interface Aircraft {
   operator_icao?: string | null;
   /** altitude corrected for local air pressure from the nearest METAR (see weather.py) */
   alt_qnh_m?: number | null;
+  /** predicted touchdown at Logan (unix s) from the landing-time model, plus the likely range */
+  landing_at?: number | null;
+  landing_lo_at?: number | null;
+  landing_hi_at?: number | null;
   /** full model name from the aircraft database, e.g. "Boeing 737-800" */
   type_desc?: string | null;
 }

@@ -27,3 +27,7 @@ data/aircraft.sqlite.tmp
 data/logos/
 # Derived from the (gitignored) logs by events.py
 data/events*.csv
+# Boston-area history imported from adsb.lol (scripts/import_history.py)
+data/history/
+# Model dataset/artifacts (dataset.py, train_eta.py)
+data/eta_*

@@ -222,6 +222,7 @@ Coverage on a live check: 99% of worldwide aircraft got a type, 86% an operator.
 | `weather.py` | Worldwide METAR altimeter settings; pressure-corrected altitudes |
 | `events.py` | Landing/takeoff detection with runway assignment from the logs (step 4) |
 | `scripts/validate_events.py` | Scores `events.py` against OpenSky's KBOS arrival records |
+| `scripts/import_history.py` | Streams adsb.lol daily archives, keeps Boston-area traces |
 | `scripts/build_aircraft_db.py` | Downloads the aircraft DB and the OpenFlights airline list into `data/` |
 | `poll_logan.py` | Retired OpenSky poller; its OAuth2 code will be reused for nightly arrival checks |
 | `.env.example` | Template for local secrets (`.env` is gitignored) |
@@ -244,6 +245,14 @@ landing-time model (step 5).
   while the logs keep running (`method = lost on final`, wider uncertainty).
 - Rejections are counted by reason; most are helicopters at downtown helipads and
   business jets at Hanscom, which the runway check correctly ignores.
+
+**History:** `python scripts/import_history.py 7` imports past days from
+[adsb.lol's open archives](https://github.com/adsblol/globe_history_2026) (ODbL).
+Each day is ~3.5 GB worldwide; the script streams it from GitHub without saving
+it and keeps only aircraft within 45 nm of Logan (`data/history/YYYY-MM-DD.jsonl.gz`,
+gitignored). Positions every few seconds instead of every 15. `events.py` reads
+these alongside the live logs, so weeks of labelled landings don't need weeks of
+waiting.
 
 **Validation** (`python scripts/validate_events.py`) against OpenSky's
 `/flights/arrival` records for KBOS, inside the 9.1 h of logs it could check:
@@ -268,7 +277,8 @@ volunteer ADS-B receivers. Map: [OpenFreeMap](https://openfreemap.org),
 © [OpenMapTiles](https://www.openmaptiles.org/),
 © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
 Aircraft types: [tar1090-db](https://github.com/wiedehopf/tar1090-db) (Mictronics).
-Airlines: [OpenFlights](https://openflights.org/data) (ODbL). Photos:
+Airlines: [OpenFlights](https://openflights.org/data) (ODbL). Historical traces:
+[adsb.lol](https://adsb.lol) globe_history (ODbL). Photos:
 [Planespotters.net](https://www.planespotters.net) (credited per photo). Logos:
 [Jxck-S/airline-logos](https://github.com/Jxck-S/airline-logos); trademarks belong
 to their airlines.

@@ -36,3 +36,10 @@ export function fmtAgo(seconds: number): string {
 /** Clock in the viewer's own time zone (it's a worldwide map now). */
 export const localTime = (ms: number) =>
   new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit", timeZoneName: "short" });
+
+/** Minutes until a unix time, never below 0. */
+export const minsUntil = (t: number, serverNow: number) => Math.max(0, Math.round((t - serverNow) / 60));
+
+/** Clock time of a unix timestamp in the viewer's zone, e.g. "6:42 AM". */
+export const clockAt = (t: number) =>
+  new Date(t * 1000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });

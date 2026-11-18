@@ -1,4 +1,4 @@
-/* Flive: dark, map-first UI. The map is always dark, so there is one theme. */
+/* Flive: map-first UI, dark by default with a light theme (html[data-theme="light"]). */
 :root {
   --bg: #070d18;
   --panel: rgba(12, 20, 36, 0.86);
@@ -108,6 +108,7 @@ button { font: inherit; color: inherit; }
 .ask-btn { background: linear-gradient(135deg, rgba(75, 55, 196, .55), rgba(59, 151, 250, .45)); border-color: rgba(120, 150, 255, .45); }
 .ask-btn:hover, .about-link:hover { border-color: rgba(150, 180, 255, .6); }
 .ask-btn.active { box-shadow: 0 0 0 3px var(--accent-soft); border-color: var(--accent); }
+.theme-btn { width: 42px; height: 42px; backdrop-filter: blur(14px); }
 
 /* ---------- chat ---------- */
 .chat { display: flex; flex-direction: column; height: calc(100% - 104px); }
@@ -231,6 +232,9 @@ button { font: inherit; color: inherit; }
   border-radius: 12px; border: 1px dashed rgba(130, 160, 210, .28); background: rgba(255, 255, 255, .02);
 }
 .predict-icon { color: var(--muted); flex: none; }
+.predict.has-eta { border-style: solid; border-color: rgba(60, 207, 135, .35); background: rgba(60, 207, 135, .06); }
+.predict.has-eta .predict-icon { color: var(--green); }
+.eta-chip { margin-left: 8px; color: var(--green); font-size: 12px; white-space: nowrap; }
 .predict-title { font-weight: 600; font-size: 16px; margin: 2px 0; }
 .detail-foot { display: flex; justify-content: space-between; margin-top: 14px; }
 
@@ -300,6 +304,7 @@ tbody tr.airport-row td.muted { color: var(--muted); }
   .search { order: 3; flex: 1 1 100%; height: 42px; }
   .live-time { display: none; }
   .ask-btn, .about-link { height: 36px; padding: 0 10px; }
+  .theme-btn { width: 36px; height: 36px; }
   .about-link span { display: none; }
   .live-text { display: none; }
   .ask-btn span { font-size: 13px; }
@@ -321,3 +326,54 @@ tbody tr.airport-row td.muted { color: var(--muted); }
   .map-controls { display: none; }
   .credit { font-size: 9px; bottom: 0; }
 }
+
+/* ---------- light theme ---------- */
+/* Same layout; only colours change. Text over aircraft photos stays white (dark gradient). */
+:root[data-theme="light"] {
+  --bg: #eef2f8;
+  --panel: rgba(255, 255, 255, 0.92);
+  --panel-solid: #ffffff;
+  --panel-raised: rgba(229, 236, 246, 0.95);
+  --border: rgba(30, 50, 90, 0.14);
+  --text: #14213a;
+  --muted: #5b6980;
+  --accent: #1d6ae5;
+  --accent-soft: rgba(29, 106, 229, 0.11);
+  --green: #13955a;
+  --cyan: #0b93c2;
+  --amber: #c97c0a;
+  --violet: #7650da;
+  --grey: #77849a;
+  --shadow: 0 10px 30px rgba(20, 40, 80, 0.14);
+  color-scheme: light;
+}
+[data-theme="light"] .kbos-dot { border-color: #fff; box-shadow: 0 0 0 6px rgba(29, 106, 229, .2); }
+[data-theme="light"] .kbos-label { background: rgba(255, 255, 255, .95); border-color: rgba(29, 106, 229, .45); color: #1d4fae; }
+[data-theme="light"] .icon-btn:hover { border-color: rgba(30, 50, 90, .25); }
+[data-theme="light"] .topbar { background: linear-gradient(to bottom, rgba(238, 242, 248, .95), rgba(238, 242, 248, 0)); }
+[data-theme="light"] .search { border-color: rgba(29, 106, 229, .3); }
+[data-theme="light"] .ask-btn { background: linear-gradient(135deg, #5b47d6, #3b8ff0); border-color: transparent; color: #fff; }
+[data-theme="light"] .ask-btn:hover, [data-theme="light"] .about-link:hover { border-color: rgba(29, 106, 229, .45); }
+[data-theme="light"] .chat-intro a, [data-theme="light"] .chat-offline a { color: var(--accent); }
+[data-theme="light"] .chat-offline { background: rgba(201, 124, 10, .09); border-color: rgba(201, 124, 10, .35); color: #7a4d00; }
+[data-theme="light"] .bubble.error { color: #7a4d00; }
+[data-theme="light"] .chip { color: #1d4fae; border-color: rgba(29, 106, 229, .3); }
+[data-theme="light"] .chip:hover:not(:disabled) { background: rgba(29, 106, 229, .18); }
+[data-theme="light"] .chat-input input { background: #fff; }
+[data-theme="light"] .stat-icon.blue, [data-theme="light"] .follow-btn.on, [data-theme="light"] .tab.active svg { color: var(--accent); }
+[data-theme="light"] .tab.active { border-color: rgba(29, 106, 229, .45); }
+[data-theme="light"] .hero {
+  background: radial-gradient(120% 120% at 100% 0%, rgba(29, 106, 229, .16), transparent 60%),
+              linear-gradient(160deg, #e2ebfa, #f5f8fd);
+}
+[data-theme="light"] .hero-plane { color: rgba(29, 106, 229, .14); }
+[data-theme="light"] .hero-sub { color: #43526a; }
+[data-theme="light"] .hero.has-photo .hero-type { color: #fff; }
+[data-theme="light"] .hero.has-photo .hero-sub { color: #dbe4f3; }
+[data-theme="light"] .predict { border-color: rgba(30, 50, 90, .22); background: rgba(20, 40, 80, .02); }
+[data-theme="light"] .predict.has-eta { border-color: rgba(19, 149, 90, .35); background: rgba(19, 149, 90, .07); }
+[data-theme="light"] .tab em { background: rgba(20, 40, 80, .07); }
+[data-theme="light"] td { border-top-color: rgba(30, 50, 90, .08); }
+[data-theme="light"] tbody tr:hover { background: rgba(20, 40, 80, .04); }
+[data-theme="light"] tbody tr.airport-row td { color: var(--accent); }
+[data-theme="light"] .badge-logo { box-shadow: inset 0 0 0 1px rgba(30, 50, 90, .1); }

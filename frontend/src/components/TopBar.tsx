@@ -1,4 +1,4 @@
-import { Logo, SearchIcon, CloseIcon, SparkIcon, InfoIcon } from "./icons";
+import { Logo, SearchIcon, CloseIcon, SparkIcon, InfoIcon, SunIcon, MoonIcon } from "./icons";
 import { localTime } from "../format";
 
 interface Props {
@@ -11,9 +11,11 @@ interface Props {
   onToggleChat: () => void;
   /** airport at the middle of the map (when zoomed in), shown where KBOS used to be */
   place: { code: string; name: string } | null;
+  theme: "dark" | "light";
+  onToggleTheme: () => void;
 }
 
-export default function TopBar({ query, onQuery, onSubmit, live, now, chatOpen, onToggleChat, place }: Props) {
+export default function TopBar({ query, onQuery, onSubmit, live, now, chatOpen, onToggleChat, place, theme, onToggleTheme }: Props) {
   return (
     <header className="topbar">
       <div className="brand">
@@ -45,6 +47,14 @@ export default function TopBar({ query, onQuery, onSubmit, live, now, chatOpen, 
         </div>
         <button className={`ask-btn ${chatOpen ? "active" : ""}`} onClick={onToggleChat} aria-pressed={chatOpen}>
           <SparkIcon size={17} /><span>Ask Flive</span>
+        </button>
+        <button
+          className="icon-btn theme-btn"
+          onClick={onToggleTheme}
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          title={theme === "dark" ? "Light mode" : "Dark mode"}
+        >
+          {theme === "dark" ? <SunIcon size={18} /> : <MoonIcon size={18} />}
         </button>
         <a className="about-link" href="/about.html" aria-label="About Flive">
           <InfoIcon size={17} /><span>About</span>

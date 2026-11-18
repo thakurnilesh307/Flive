@@ -33,19 +33,21 @@ const HIDE = [
   "railway_transit", "railway_transit_dashline",
 ];
 
-export function restyleBasemap(map: GLMap) {
+/** Quiet the clutter (both themes); in dark mode also recolour OpenFreeMap's grey
+ *  "dark" style to Flive's navy. Light mode uses OpenFreeMap's "positron" as-is. */
+export function restyleBasemap(map: GLMap, theme: "dark" | "light" = "dark") {
+  for (const layer of HIDE) if (map.getLayer(layer)) map.setLayoutProperty(layer, "visibility", "none");
+  for (const layer of ["place_village", "place_suburb", "place_other"]) {
+    if (map.getLayer(layer)) map.setLayerZoomRange(layer, 12, 24);
+  }
+  if (map.getLayer("highway_name_other")) map.setLayerZoomRange("highway_name_other", 13, 24);
+  if (theme === "light") return;
   for (const [layer, props] of Object.entries(PAINT)) {
     if (!map.getLayer(layer)) continue;
     for (const [prop, value] of Object.entries(props)) {
       map.setPaintProperty(layer, prop as Parameters<GLMap["setPaintProperty"]>[1], value);
     }
   }
-  for (const layer of HIDE) if (map.getLayer(layer)) map.setLayoutProperty(layer, "visibility", "none");
-  // Small places only once zoomed in; at the default view keep just towns and cities.
-  for (const layer of ["place_village", "place_suburb", "place_other"]) {
-    if (map.getLayer(layer)) map.setLayerZoomRange(layer, 12, 24);
-  }
-  if (map.getLayer("highway_name_other")) map.setLayerZoomRange("highway_name_other", 13, 24);
   for (const layer of map.getStyle().layers ?? []) {
     if (!layer.id.startsWith("place_")) continue;
     const big = layer.id === "place_city" || layer.id === "place_city_large";

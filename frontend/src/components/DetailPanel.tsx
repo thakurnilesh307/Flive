@@ -3,7 +3,7 @@ import type { Derived } from "../status";
 import { categoryLabel, operatorFor } from "../airlines";
 import AirlineBadge from "./AirlineBadge";
 import { describePosition, useAirports } from "../airports";
-import { flightLabel, fmtAgo, fmtAlt, fmtDist, fmtHeading, fmtSpeed, fmtVs } from "../format";
+import { clockAt, flightLabel, fmtAgo, fmtAlt, fmtDist, fmtHeading, fmtSpeed, fmtVs, minsUntil } from "../format";
 import { CloseIcon, LocateIcon, PlaneGlyph, RunwayIcon } from "./icons";
 import StatusPill from "./StatusPill";
 
@@ -99,13 +99,29 @@ export default function DetailPanel({ d, serverNow, following, onToggleFollow, o
         <div><dt>Squawk</dt><dd>{a.squawk ?? "–"}</dd></div>
       </dl>
 
-      <div className="predict">
+      <div className={`predict ${a.landing_at ? "has-eta" : ""}`}>
         <RunwayIcon size={30} className="predict-icon" />
-        <div>
-          <div className="muted small">Predicted landing</div>
-          <div className="predict-title">Not built yet</div>
-          <div className="muted small">My landing scheduler will fill this in</div>
-        </div>
+        {a.landing_at ? (
+          <div>
+            <div className="muted small">Predicted landing at Logan</div>
+            <div className="predict-title">
+              {minsUntil(a.landing_at, serverNow) < 1 ? "Landing now" : `In about ${minsUntil(a.landing_at, serverNow)} min`}
+              <span className="muted"> · {clockAt(a.landing_at)}</span>
+            </div>
+            <div className="muted small">
+              {a.landing_lo_at && a.landing_hi_at && a.landing_hi_at - a.landing_lo_at >= 60
+                ? `Likely ${minsUntil(a.landing_lo_at, serverNow)} to ${minsUntil(a.landing_hi_at, serverNow)} min · `
+                : ""}
+              my model, trained on past Logan landings
+            </div>
+          </div>
+        ) : (
+          <div>
+            <div className="muted small">Predicted landing</div>
+            <div className="predict-title">No prediction</div>
+            <div className="muted small">Only for planes that look like they&apos;re landing at Logan</div>
+          </div>
+        )}
       </div>
 
       <footer className="detail-foot muted small">

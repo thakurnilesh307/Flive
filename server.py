@@ -35,6 +35,7 @@ import airports  # noqa: E402
 import photos  # noqa: E402
 import logos  # noqa: E402
 import weather  # noqa: E402
+import eta  # noqa: E402
 
 POLL_SECONDS = 5        # provider allows 1 req/s; 5s is plenty for a live map
 LOG_SECONDS = 15        # log less often than we poll: keeps log files small
@@ -118,6 +119,7 @@ def backoff(failures):
     return min(MAX_BACKOFF, POLL_SECONDS * 2 ** failures)
 
 
+predictor = eta.LivePredictor()      # landing-time model (train_eta.py); no-op if not trained
 qnh_field = weather.QnhField()   # altimeter settings from every METAR station
 
 
@@ -145,6 +147,12 @@ async def poller():
             snap = await asyncio.to_thread(poll_once)
             aircraft_db.enrich(snap["aircraft"])  # operator, full type name, missing type/reg
             weather.apply(snap["aircraft"], qnh_field)  # adds alt_qnh_m; baro_alt_m stays raw
+            # Predicted landing times (before logging, so the logs record every prediction
+            # and they can be scored against what really happened).
+            try:
+                predictor.update(snap)
+            except Exception as e:
+                print(f"Prediction failed ({type(e).__name__}: {e})")
             failures = 0
             latest = snap
             if snap["fetched_at"] - last_logged >= LOG_SECONDS - 0.5:
@@ -197,6 +205,11 @@ async def world_poller():
 
 @asynccontextmanager
 async def lifespan(app):
+    if predictor.available:
+        await asyncio.to_thread(predictor.seed_from_logs)
+        print(f"Landing model loaded: {predictor.status()}")
+    else:
+        print(f"Landing model off: {predictor.error}")
     weather_task = asyncio.create_task(weather_poller())
     task = asyncio.create_task(poller())
     world_task = None
@@ -350,6 +363,12 @@ async def airline_logo(code: str):
         raise HTTPException(404, "No logo.")
     return Response(content=png, media_type="image/png",
                     headers={"Cache-Control": "public, max-age=604800"})
+
+
+@app.get("/api/eta/status")
+async def eta_status():
+    """Is the landing-time model loaded, how good was it on held-out days, which runway is in use."""
+    return predictor.status()
 
 
 @app.get("/api/world/stats")

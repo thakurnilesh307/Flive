@@ -1,6 +1,6 @@
 import type { Derived } from "../status";
 import { operatorFor } from "../airlines";
-import { flightLabel, fmtAlt, fmtDist, fmtSpeed } from "../format";
+import { flightLabel, fmtAlt, fmtDist, fmtSpeed, minsUntil } from "../format";
 import { describePosition, useAirports, type Airport } from "../airports";
 import { ChevronIcon, PlaneGlyph } from "./icons";
 import StatusPill from "./StatusPill";
@@ -30,6 +30,7 @@ interface Props {
   onSelect: (id: string) => void;
   open: boolean;
   onToggle: () => void;
+  serverNow: number;
 }
 
 const TABS: { id: Tab; label: string; rotate: number }[] = [
@@ -38,7 +39,7 @@ const TABS: { id: Tab; label: string; rotate: number }[] = [
   { id: "inview", label: "In view", rotate: 75 },
 ];
 
-export default function FlightTable({ tab, onTab, tabs, counts, rows, note, searching, airports, onAirport, selectedId, onSelect, open, onToggle }: Props) {
+export default function FlightTable({ tab, onTab, tabs, counts, rows, note, searching, airports, onAirport, selectedId, onSelect, open, onToggle, serverNow }: Props) {
   useAirports(); // re-render with "near X" positions once the airport list arrives
   return (
     <section className={`panel table-panel ${open ? "open" : ""}`} aria-label="Flight list">
@@ -103,7 +104,10 @@ export default function FlightTable({ tab, onTab, tabs, counts, rows, note, sear
                   <td className="num">{fmtAlt(d)}</td>
                   <td className="num">{fmtSpeed(d)}</td>
                   <td className="muted">{describePosition(d.a) ?? `${fmtDist(d)} from KBOS`}</td>
-                  <td><StatusPill status={d.status} /></td>
+                  <td>
+                    <StatusPill status={d.status} />
+                    {d.a.landing_at ? <span className="eta-chip">lands ~{minsUntil(d.a.landing_at, serverNow)} min</span> : null}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -53,9 +53,7 @@ def fetch_arrivals(begin, end):
 
 
 def main():
-    paths = sorted(glob.glob(str(ROOT / "logan_*.jsonl")))
-    tracks, _ = events.load_tracks(paths)
-    covered = events.coverage(paths)
+    tracks, covered, _, _, _ = events.load_all()   # live logs + imported adsb.lol history
     detected, _ = events.detect(tracks, covered)
     landings = [e for e in detected if e["kind"] == "landing"]
     windows = [(s + EDGE_S, e - 120) for s, e in covered if e - s > EDGE_S + 600]
@@ -75,13 +73,19 @@ def main():
     sky = [a for a in arrivals if a.get("lastSeen") and inside(a["lastSeen"])]
     ours = [e for e in landings if inside(e["time"])]
 
-    def match(t, icao, pool, key):
-        return any(p_icao == icao and abs(p_t - t) <= MATCH_S for p_icao, p_t in pool)
+    def index(pairs):
+        by = {}
+        for icao, t in pairs:
+            by.setdefault(icao, []).append(t)
+        return by
 
-    sky_pool = [(a["icao24"], a["lastSeen"]) for a in sky]
-    our_pool = [(e["icao24"], e["time"]) for e in ours]
-    found = [a for a in sky if match(a["lastSeen"], a["icao24"], our_pool, None)]
-    confirmed = [e for e in ours if match(e["time"], e["icao24"], sky_pool, None)]
+    def match(t, icao, pool):
+        return any(abs(p_t - t) <= MATCH_S for p_t in pool.get(icao, ()))
+
+    sky_pool = index((a["icao24"], a["lastSeen"]) for a in sky)
+    our_pool = index((e["icao24"], e["time"]) for e in ours)
+    found = [a for a in sky if match(a["lastSeen"], a["icao24"], our_pool)]
+    confirmed = [e for e in ours if match(e["time"], e["icao24"], sky_pool)]
 
     print(f"OpenSky KBOS arrivals in those windows: {len(sky)}")
     print(f"Our detected landings in those windows:  {len(ours)}")

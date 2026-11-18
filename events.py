@@ -26,6 +26,7 @@ These events are the labels for the landing-time model (roadmap step 5).
 """
 import csv
 import glob
+import gzip
 import json
 import math
 import sys
@@ -156,9 +157,9 @@ def load_tracks(paths):
                     t = _num(a.get("time_position")) or fetched
                     if t is None:
                         continue
-                    alt_m = _num(a.get("alt_qnh_m"))
-                    if alt_m is None:
-                        alt_m = _num(a.get("baro_alt_m"))
+                    # Raw pressure altitude everywhere, so old logs, new logs and adsb.lol
+                    # history agree (only recent logs have the pressure-corrected value).
+                    alt_m = _num(a.get("baro_alt_m"))
                     vs, gs = _num(a.get("vert_rate_ms")), _num(a.get("velocity_ms"))
                     tracks[a["icao24"]][round(t)] = Sample(
                         t=t, lat=lat, lon=lon,
@@ -172,6 +173,45 @@ def load_tracks(paths):
                         category=_num(a.get("category")),
                     )
     return {k: [v[t] for t in sorted(v)] for k, v in tracks.items()}, bad_lines
+
+
+def load_history(paths, tracks=None):
+    """Add adsb.lol history (scripts/import_history.py, data/history/*.jsonl.gz) to
+    `tracks`. Points: [t, lat, lon, alt_ft, on_ground, gs_kt, track, vs_fpm, callsign
+    (only when it changes)]. Altitudes here are raw pressure altitude (no historical
+    QNH yet), which is fine for the detector's thresholds."""
+    merged = defaultdict(dict)
+    for k, v in (tracks or {}).items():
+        merged[k].update({round(x.t): x for x in v})
+    for path in paths:
+        with gzip.open(path, "rt", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                icao, cs = rec.get("icao24"), ""
+                if not icao:
+                    continue
+                for p in rec.get("points", []):
+                    if len(p) < 9 or _num(p[0]) is None:
+                        continue
+                    cs = (p[8] or cs or "").strip()
+                    merged[icao][round(p[0])] = Sample(
+                        t=p[0], lat=p[1], lon=p[2], alt_ft=_num(p[3]), on_ground=bool(p[4]),
+                        gs_kt=_num(p[5]), track=_num(p[6]), vs_fpm=_num(p[7]), callsign=cs,
+                        actype=rec.get("aircraft_type"), category=_num(rec.get("category")),
+                    )
+    return {k: [v[t] for t in sorted(v)] for k, v in merged.items()}
+
+
+def history_coverage(paths):
+    """Each imported day is one continuous window (adsb.lol records all day)."""
+    out = []
+    for path in paths:
+        day = datetime.strptime(Path(path).name[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()
+        out.append((day, day + 86400))
+    return out
 
 
 def segments(samples):
@@ -208,6 +248,16 @@ def _holds(seg, g, i, seconds=CONFIRM_S):
         if g[j] != g[i]:
             return False
     return True
+
+
+def _track(seg, i, prefer):
+    """Heading around seg[i]. The sample right at an air/ground change often has no
+    track (adsb.lol traces), so fall back to the nearest neighbour that has one,
+    looking first in the `prefer` direction (-1 = before, +1 = after)."""
+    for j in (i, i + prefer, i - prefer, i + 2 * prefer, i - 2 * prefer):
+        if 0 <= j < len(seg) and seg[j].track is not None:
+            return seg[j].track
+    return None
 
 
 def _covered(t, windows):
@@ -284,8 +334,9 @@ def detect(tracks, windows=()):
                     elif a.vs_fpm is not None and a.vs_fpm > 500:
                         why = "climbing, not landing"
                     else:
-                        rwy = match_runway(b.lat, b.lon, a.track, before=3.0, after=0.5) \
-                            or match_runway(a.lat, a.lon, a.track, before=3.0, after=0.5)
+                        trk = _track(seg, i - 1, -1)  # approach heading, from the last airborne samples
+                        rwy = match_runway(b.lat, b.lon, trk, before=3.0, after=0.5) \
+                            or match_runway(a.lat, a.lon, trk, before=3.0, after=0.5)
                         why = None if rwy else "not at a Logan runway (helipad or other airport)"
                 else:
                     later = [s for s in seg[i:] if s.t <= b.t + 120 and s.alt_ft is not None]
@@ -294,8 +345,9 @@ def detect(tracks, windows=()):
                     if not climbing:
                         why = "not climbing after liftoff"
                     else:
-                        rwy = match_runway(a.lat, a.lon, b.track, before=0.3, after=2.0) \
-                            or match_runway(b.lat, b.lon, b.track, before=0.3, after=2.0)
+                        trk = _track(seg, i, +1)  # departure heading, from the first airborne samples
+                        rwy = match_runway(a.lat, a.lon, trk, before=0.3, after=2.0) \
+                            or match_runway(b.lat, b.lon, trk, before=0.3, after=2.0)
                         why = None if rwy else "not at a Logan runway (helipad or other airport)"
                 if why:
                     rejected[f"{kind}: {why}"] += 1
@@ -335,12 +387,28 @@ def coverage(tracks_paths):
     return windows
 
 
-def main():
+def load_all():
+    """Flive's own logs plus any imported adsb.lol history. Returns (tracks, windows, bad_lines)."""
     paths = sorted(glob.glob(str(HERE / "logan_*.jsonl")))
-    if not paths:
-        sys.exit("No logan_*.jsonl logs found. Run the server for a while first.")
+    hist = sorted(glob.glob(str(HERE / "data" / "history" / "*.jsonl.gz")))
     tracks, bad = load_tracks(paths)
-    windows = coverage(paths)
+    windows = coverage(paths) if paths else []
+    if hist:
+        tracks = load_history(hist, tracks)
+        windows = sorted(windows + history_coverage(hist))
+    merged = []  # overlapping windows (logs inside an imported day) -> one
+    for w in windows:
+        if merged and w[0] <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], w[1]))
+        else:
+            merged.append(w)
+    return tracks, merged, bad, len(paths), len(hist)
+
+
+def main():
+    tracks, windows, bad, n_logs, n_hist = load_all()
+    if not tracks:
+        sys.exit("No data: run the server for a while, or scripts/import_history.py.")
     events, rejected = detect(tracks, windows)
     hours = sum(e - s for s, e in windows) / 3600
 
@@ -352,7 +420,7 @@ def main():
         w.writerows(events)
 
     kinds = Counter(e["kind"] for e in events)
-    print(f"{len(paths)} log files, {len(tracks)} aircraft, {hours:.1f} h of continuous coverage"
+    print(f"{n_logs} log files + {n_hist} imported days, {len(tracks)} aircraft, {hours:.1f} h of coverage"
           f"{f', {bad} unreadable lines' if bad else ''}")
     inferred = sum(1 for e in events if e["method"] == "lost on final")
     print(f"Detected {kinds['landing']} landings ({inferred} inferred: lost from view on short final) "

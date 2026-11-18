@@ -118,3 +118,19 @@ pre {
   .glossary dd { margin-bottom: 10px; }
   .about-top-links > a:not(.btn-primary) { display: none; }
 }
+
+/* light theme (follows the live map's choice or the system setting) */
+:root[data-theme="light"] {
+  --bg: #f4f6fb; --bg-2: #ffffff; --panel: #ffffff; --panel-raised: #eef2f8;
+  --border: rgba(30, 50, 90, 0.14); --text: #14213a; --text-2: #34425a; --muted: #5b6980;
+  --accent: #1d6ae5; --accent-soft: rgba(29, 106, 229, 0.1);
+  --green: #13955a; --blue: #1d6ae5; --amber: #c97c0a; --violet: #7650da; --grey: #77849a;
+  --code: #1d4fae;
+  color-scheme: light;
+}
+[data-theme="light"] a { color: #1d5fd0; }
+[data-theme="light"] a:hover { color: #0b3b8c; }
+[data-theme="light"] code { background: rgba(29, 106, 229, .08); }
+[data-theme="light"] pre { background: #f0f3f9; }
+[data-theme="light"] .about-top { background: rgba(244, 246, 251, .88); }
+[data-theme="light"] .btn-ghost:hover { border-color: rgba(29, 106, 229, .4); }

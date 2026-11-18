@@ -6,6 +6,7 @@ import { operatorFor } from "./airlines";
 import { KBOS, distanceNm } from "./geo";
 import type { BBox, LatLon } from "./types";
 import { nearest, searchAirports, useAirports, type Airport } from "./airports";
+import { applyTheme, initialTheme, type Theme } from "./theme";
 import MapView from "./components/MapView";
 import TopBar from "./components/TopBar";
 import StatsCard from "./components/StatsCard";
@@ -40,6 +41,13 @@ export default function App() {
   const { snapshot, connected, clockSkew, trails, world, sendView, keepAircraft } = useLiveFeed();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [follow, setFollow] = useState(true);
+  const [theme, setTheme] = useState<Theme>(initialTheme);
+  useEffect(() => { applyTheme(theme); }, [theme]);
+  const toggleTheme = () => setTheme((t) => {
+    const next = t === "dark" ? "light" : "dark";
+    applyTheme(next, true);   // remembered only once you choose
+    return next;
+  });
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<Tab>("inview");
   const [view, setView] = useState<{ bbox: BBox | null; center: LatLon; zoom: number }>({ bbox: null, center: KBOS, zoom: 10 });
@@ -105,7 +113,10 @@ export default function App() {
   const inViewTotal = world ? bostonInView + world.totalInView : inView.length;
 
   const lists = useMemo(() => ({
-    arrivals: derived.filter((d) => isArriving(d.status)),
+    // Arrivals: the model's predicted landings first (soonest first), then other inbound planes.
+    arrivals: derived
+      .filter((d) => isArriving(d.status) || d.a.landing_at != null)
+      .sort((x, y) => (x.a.landing_at ?? Infinity) - (y.a.landing_at ?? Infinity)),
     departures: derived.filter((d) => d.status === "departing"),
     inview: inView.slice(0, MAX_VIEW_ROWS),
   }), [derived, inView]);
@@ -113,7 +124,9 @@ export default function App() {
   const activeTab: Tab = nearBoston ? tab : "inview";
   const tableNote = activeTab === "inview"
     ? (inViewTotal > MAX_VIEW_ROWS ? `Nearest ${MAX_VIEW_ROWS} to the map centre` : "Nearest to the map centre first")
-    : "Logan statuses are my best guess from position and speed";
+    : activeTab === "arrivals"
+      ? "Sorted by predicted landing time (my model) · statuses are estimates"
+      : "Logan statuses are my best guess from position and speed";
 
   // Selecting a plane always (re)starts following it; MapView flies the camera there.
   const select = useCallback((id: string | null) => {
@@ -146,6 +159,7 @@ export default function App() {
         onViewChange={(bbox, center, zoom) => { sendView(bbox); setView({ bbox, center, zoom }); }}
         follow={follow}
         onFollowChange={setFollow}
+        theme={theme}
       />
 
       <TopBar
@@ -159,6 +173,8 @@ export default function App() {
           else if (searchHits?.[0]) select(searchHits[0].a.icao24);
         }}
         place={place}
+        theme={theme}
+        onToggleTheme={toggleTheme}
         live={live}
         now={now}
         chatOpen={chatOpen}
@@ -202,6 +218,7 @@ export default function App() {
         onSelect={(id) => select(id)}
         open={tableOpen}
         onToggle={() => setTableOpen((o) => !o)}
+        serverNow={serverNow}
       />
 
       {!snapshot && <div className="loading panel">{connected ? "Waiting for first update…" : "Connecting to live feed…"}</div>}

@@ -105,6 +105,11 @@ def _num(v):
     return v if isinstance(v, (int, float)) else None
 
 
+def _mins(t, api_time):
+    t = _num(t)
+    return None if t is None or api_time is None else max(0, round((t - api_time) / 60))
+
+
 def derive(a, api_time):
     """One aircraft -> flat dict in display units, ready to hand to the LLM."""
     lat, lon = _num(a.get("lat")), _num(a.get("lon"))
@@ -140,6 +145,10 @@ def derive(a, api_time):
         "current_position": f"{side} of KBOS" if side else ("at KBOS" if has_pos else None),
         # Named so the model can't easily mistake it for an ETA.
         "earliest_possible_minutes_to_kbos": minutes,
+        # Landing-time model (eta.py): minutes from the data time, or None.
+        "_predicted_min": _mins(a.get("landing_at"), api_time),
+        "_predicted_lo_min": _mins(a.get("landing_lo_at"), api_time),
+        "_predicted_hi_min": _mins(a.get("landing_hi_at"), api_time),
         "squawk": a.get("squawk"),
         "seconds_since_signal": seen,
     }
