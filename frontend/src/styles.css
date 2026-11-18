@@ -211,20 +211,17 @@ button { font: inherit; color: inherit; }
 .predict-title { font-weight: 600; font-size: 16px; margin: 2px 0; }
 .detail-foot { display: flex; justify-content: space-between; margin-top: 14px; }
 
-/* ---------- status pills ---------- */
-.pill {
-  --c: var(--grey);
-  display: inline-flex; align-items: center; gap: 7px; padding: 3px 10px; border-radius: 999px;
-  font-size: 13px; font-weight: 500; white-space: nowrap;
-  color: color-mix(in srgb, var(--c) 85%, white); background: color-mix(in srgb, var(--c) 16%, transparent);
-}
-.pill-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
-.pill-lg { font-size: 15px; padding: 6px 14px; }
-.pill-approach { --c: var(--green); }
-.pill-inbound { --c: var(--accent); }
-.pill-departing { --c: var(--amber); }
-.pill-enroute { --c: var(--violet); }
-.pill-taxiing, .pill-ground { --c: var(--grey); }
+/* ---------- status ---------- */
+/* Flight-board style: a coloured glyph for what the plane is doing, plain label beside it. */
+.status { --c: var(--grey); display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; font-size: 13px; color: var(--text); }
+.status svg { flex: none; color: var(--c); }
+.status-lg { font-size: 16px; font-weight: 600; gap: 8px; }
+.status-approach { --c: var(--green); }
+.status-inbound { --c: var(--accent); }
+.status-departing { --c: var(--amber); }
+.status-enroute { --c: var(--violet); }
+.status-taxiing, .status-ground { --c: var(--grey); }
+.status-taxiing .status-text, .status-ground .status-text { color: var(--muted); }
 
 /* ---------- flight table ---------- */
 .table-panel {
