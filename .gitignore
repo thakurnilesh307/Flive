@@ -25,3 +25,5 @@ data/aircraft.sqlite
 data/aircraft.sqlite.tmp
 # Airline logos cached by the server (logos.py)
 data/logos/
+# Derived from the (gitignored) logs by events.py
+data/events*.csv

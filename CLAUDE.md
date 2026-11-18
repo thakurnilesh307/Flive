@@ -98,6 +98,13 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
 - `opensky_auth.py` - shared OpenSky OAuth2 token handling (thread-safe).
 - `poll_logan.py` - old OpenSky state-vector logger. Retired for live data; its
   OAuth2 token code is reusable for the OpenSky flights endpoints.
+- `events.py` - step 4 (done, offline): logs -> landing/takeoff events with
+  runway (`data/events.csv`, gitignored). Despike ground flags (airborne blips
+  first), confirm 60 s, runway by heading <= 25 deg AND <= 0.35 nm from the
+  extended centreline (RUNWAYS_RAW from OurAirports), "lost on final" inferred
+  landings for aircraft with no ground flag. `scripts/validate_events.py` scores
+  it against OpenSky /flights/arrival (one UTC day per request max: a query may
+  touch at most 2 day partitions). Last check: 97% recall, 100% precision.
 - `explore.py` - (planned) pandas/matplotlib analysis of the JSONL logs.
 
 ## Snapshot format (do not change field names without updating all consumers)

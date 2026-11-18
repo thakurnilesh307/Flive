@@ -220,16 +220,44 @@ Coverage on a live check: 99% of worldwide aircraft got a type, 86% an operator.
 | `aircraft_db.py` | Type/registration lookup (SQLite) and operator from callsign; enriches both feeds |
 | `photos.py`, `logos.py` | Cached Planespotters photo lookup and airline logo cache |
 | `weather.py` | Worldwide METAR altimeter settings; pressure-corrected altitudes |
+| `events.py` | Landing/takeoff detection with runway assignment from the logs (step 4) |
+| `scripts/validate_events.py` | Scores `events.py` against OpenSky's KBOS arrival records |
 | `scripts/build_aircraft_db.py` | Downloads the aircraft DB and the OpenFlights airline list into `data/` |
 | `poll_logan.py` | Retired OpenSky poller; its OAuth2 code will be reused for nightly arrival checks |
 | `.env.example` | Template for local secrets (`.env` is gitignored) |
+
+## Landing and takeoff detection (step 4)
+
+`python events.py` turns the 15 s logs into events (`data/events.csv`): who
+landed or took off, when, and on which runway. These are the labels for the
+landing-time model (step 5).
+
+- A landing is an airborne -> on-ground change; a takeoff the reverse.
+  Single-sample flag blips are smoothed out first (a plane rolling out once
+  reported "airborne at 3,650 ft"), and every change must stick for 60 s, be
+  low/descending (landing) or climbing (takeoff), and be on a Logan runway.
+- Runway = lined up within 25 degrees of its heading AND within 0.35 nm of its
+  extended centreline (from OurAirports threshold coordinates), so parallel
+  runways like 04L/04R are told apart by position.
+- Light aircraft that never send an on-ground flag (many Cape Air Cessnas) get an
+  inferred landing when the track ends low, descending and lined up with a runway
+  while the logs keep running (`method = lost on final`, wider uncertainty).
+- Rejections are counted by reason; most are helicopters at downtown helipads and
+  business jets at Hanscom, which the runway check correctly ignores.
+
+**Validation** (`python scripts/validate_events.py`) against OpenSky's
+`/flights/arrival` records for KBOS, inside the 9.1 h of logs it could check:
+**97% recall** (142 of 147 OpenSky arrivals found) and **100% precision** (all 142
+detected landings confirmed). The 5 misses: two touchdowns inside gaps in the old
+logs, a helicopter, a low pass and an arrival outside our data. Our touchdown time
+is a median 10 s after OpenSky's "last seen".
 
 ## Roadmap
 
 1. Repo hygiene
 2. React + TypeScript frontend: aircraft list, detail panel
 3. "Ask Flive": chat over the live state using a local LLM with tool calling
-4. Arrival/departure detection per flight (runway, touchdown/liftoff time)
+4. Arrival/departure detection per flight (runway, touchdown/liftoff time) - done (offline, `events.py`)
 5. Scheduler: predicted landing sequence vs. actual, checked nightly against OpenSky arrivals
 6. Always-on deployment
 

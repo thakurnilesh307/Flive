@@ -382,9 +382,11 @@ export default function About() {
             </p>
             <ol className="steps">
               <li>
-                <b>Detect real arrivals and departures.</b> Follow each plane through the logged snapshots, catch the moment
-                it touches down or takes off (its &quot;on ground&quot; flag flips), and figure out which runway it used from its
-                heading and position. That replaces the guessed labels with things that actually happened.
+                <b>Detect real arrivals and departures (done).</b> I follow each plane through the logged snapshots, catch the
+                moment it touches down or takes off (its &quot;on ground&quot; flag flips), and figure out which runway it used from
+                its heading and position. The flag glitches a lot, so there are sanity checks, and small planes that never
+                send it get an inferred landing when they disappear low on final. Checked against OpenSky&apos;s official
+                arrival records, it found 97% of Logan arrivals, and every landing it found was real.
               </li>
               <li>
                 <b>Predict the landing order.</b> For planes still in the air, predict which order they&apos;ll land in and when.
