@@ -12,17 +12,20 @@ The UI is the React app in frontend/, served from frontend/dist once built.
 import asyncio
 import json
 import time
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 HERE = Path(__file__).parent
 load_dotenv(HERE / ".env")  # before importing modules that read env vars
 
+import ask  # noqa: E402
 from adsb_feed import RateLimited, poll_once  # noqa: E402
 
 POLL_SECONDS = 5        # provider allows 1 req/s; 5s is plenty for a live map
@@ -101,6 +104,60 @@ async def ws_endpoint(ws: WebSocket):
             await ws.receive_text()   # just keeps the connection open
     except WebSocketDisconnect:
         clients.discard(ws)
+
+
+# --- Ask Flive --------------------------------------------------------------
+
+backend = ask.OllamaBackend()
+model_slot = asyncio.Semaphore(1)       # one model call at a time; others queue briefly
+ASK_LIMITS = [(60, 5), (3600, 40)]       # per visitor: 5/minute, 40/hour
+recent_asks: dict[str, deque] = defaultdict(deque)
+
+
+class Turn(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    content: str = Field(max_length=2000)
+
+
+class AskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=300)
+    history: list[Turn] = Field(default_factory=list, max_length=12)
+
+
+def check_rate(ip: str):
+    now = time.monotonic()
+    q = recent_asks[ip]
+    while q and now - q[0] > ASK_LIMITS[-1][0]:
+        q.popleft()
+    for window, limit in ASK_LIMITS:
+        if sum(1 for t in q if now - t <= window) >= limit:
+            raise HTTPException(429, f"Slow down a little: max {limit} questions per "
+                                     f"{'minute' if window == 60 else 'hour'}.")
+    q.append(now)
+
+
+@app.post("/api/ask")
+async def ask_endpoint(req: AskRequest, request: Request):
+    # Behind a reverse proxy this needs the forwarded client IP (deploy step).
+    check_rate(request.client.host if request.client else "unknown")
+    try:
+        await asyncio.wait_for(model_slot.acquire(), timeout=45)
+    except asyncio.TimeoutError:
+        raise HTTPException(503, "Ask Flive is busy right now. Try again in a moment.")
+    try:
+        history = [t.model_dump() for t in req.history]
+        return await asyncio.to_thread(ask.answer, req.question, history, latest, backend)
+    except ask.BackendUnavailable as e:
+        print(f"Ask Flive unavailable: {e}")
+        raise HTTPException(503, "Ask Flive's language model is offline right now.")
+    finally:
+        model_slot.release()
+
+
+@app.get("/api/ask/status")
+async def ask_status():
+    ok = await asyncio.to_thread(backend.available)
+    return {"available": ok, "model": backend.model}
 
 
 # The built React app. Mounted last so /ws above takes precedence.

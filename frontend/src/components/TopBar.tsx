@@ -1,4 +1,4 @@
-import { Logo, SearchIcon, CloseIcon } from "./icons";
+import { Logo, SearchIcon, CloseIcon, SparkIcon, InfoIcon } from "./icons";
 import { bostonTime } from "../format";
 
 interface Props {
@@ -7,9 +7,11 @@ interface Props {
   onSubmit: () => void;
   live: boolean;
   now: number;
+  chatOpen: boolean;
+  onToggleChat: () => void;
 }
 
-export default function TopBar({ query, onQuery, onSubmit, live, now }: Props) {
+export default function TopBar({ query, onQuery, onSubmit, live, now, chatOpen, onToggleChat }: Props) {
   return (
     <header className="topbar">
       <div className="brand">
@@ -39,6 +41,12 @@ export default function TopBar({ query, onQuery, onSubmit, live, now }: Props) {
           <span className="live-text">{live ? "Live" : "Reconnecting"}</span>
           <span className="live-time">· {bostonTime(now)}</span>
         </div>
+        <button className={`ask-btn ${chatOpen ? "active" : ""}`} onClick={onToggleChat} aria-pressed={chatOpen}>
+          <SparkIcon size={17} /><span>Ask Flive</span>
+        </button>
+        <a className="about-link" href="/about.html" aria-label="About Flive">
+          <InfoIcon size={17} /><span>About</span>
+        </a>
         <div className="airport-pill" title="Boston Logan International">KBOS</div>
       </div>
     </header>

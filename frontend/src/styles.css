@@ -110,6 +110,56 @@ button { font: inherit; color: inherit; }
   background: var(--panel); border: 1px solid var(--border); font-weight: 700; letter-spacing: .03em;
 }
 
+.ask-btn, .about-link {
+  height: 42px; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--border); color: var(--text); font-weight: 600;
+  text-decoration: none; cursor: pointer; white-space: nowrap; backdrop-filter: blur(14px);
+}
+.ask-btn { background: linear-gradient(135deg, rgba(75, 55, 196, .55), rgba(59, 151, 250, .45)); border-color: rgba(120, 150, 255, .45); }
+.ask-btn:hover, .about-link:hover { border-color: rgba(150, 180, 255, .6); }
+.ask-btn.active { box-shadow: 0 0 0 3px var(--accent-soft); border-color: var(--accent); }
+
+/* ---------- chat ---------- */
+.chat { display: flex; flex-direction: column; height: calc(100% - 104px); }
+.chat-head { display: flex; align-items: center; gap: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+.chat-mark {
+  flex: none; width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, #4b37c4, #3b97fa);
+}
+.chat-list { flex: 1; overflow-y: auto; padding: 14px 2px; display: flex; flex-direction: column; gap: 10px; }
+.chat-intro { color: var(--muted); }
+.chat-intro p { margin: 0 0 8px; }
+.chat-intro a, .chat-offline a { color: #8cc0ff; }
+.chat-offline {
+  padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(243, 169, 59, .35);
+  background: rgba(243, 169, 59, .08); color: #f1cf9a;
+}
+.bubble { max-width: 88%; padding: 10px 13px; border-radius: 14px; }
+.bubble p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bubble.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+.bubble.assistant { align-self: flex-start; background: var(--panel-raised); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+.bubble.error { border-color: rgba(243, 169, 59, .4); color: #f1cf9a; }
+.bubble-meta { display: block; margin-top: 6px; font-size: 11px; color: var(--muted); }
+.typing { display: flex; gap: 5px; padding: 14px; }
+.typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite; }
+.typing span:nth-child(2) { animation-delay: .2s; }
+.typing span:nth-child(3) { animation-delay: .4s; }
+@keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 12px; }
+.chip {
+  padding: 7px 12px; border-radius: 999px; background: var(--accent-soft); border: 1px solid rgba(61, 139, 255, .4);
+  color: #cfe2ff; font-size: 13px; cursor: pointer; text-align: left;
+}
+.chip:hover:not(:disabled) { background: rgba(61, 139, 255, .28); }
+.chat-input { display: flex; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.chat-input input {
+  flex: 1; min-width: 0; height: 44px; padding: 0 14px; border-radius: 12px; background: rgba(0, 0, 0, .25);
+  border: 1px solid var(--border); color: var(--text); font: inherit; outline: 0;
+}
+.chat-input input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.icon-btn.send { width: 44px; height: 44px; background: var(--accent); border-color: var(--accent); color: #fff; }
+.icon-btn:disabled { opacity: .45; cursor: default; }
+
 /* ---------- stats ---------- */
 .stats { position: absolute; z-index: 5; top: 84px; left: var(--gutter); padding: 6px 18px; min-width: 196px; }
 .stat { display: flex; align-items: center; gap: 14px; padding: 12px 0; }
@@ -233,6 +283,11 @@ tbody tr.selected { background: var(--accent-soft); }
   .brand { font-size: 20px; }
   .search { order: 3; flex: 1 1 100%; height: 42px; }
   .live-time { display: none; }
+  .ask-btn, .about-link { height: 36px; padding: 0 10px; }
+  .about-link span { display: none; }
+  .live-text { display: none; }
+  .ask-btn span { font-size: 13px; }
+  .chat { height: 70%; max-height: 70%; }
   .airport-pill { height: 36px; padding: 0 12px; }
   .stats { top: 118px; display: flex; gap: 14px; padding: 4px 14px; min-width: 0; }
   .stat { padding: 8px 0; gap: 8px; }

@@ -9,6 +9,8 @@ import TopBar from "./components/TopBar";
 import StatsCard from "./components/StatsCard";
 import DetailPanel from "./components/DetailPanel";
 import FlightTable, { type Tab } from "./components/FlightTable";
+import ChatPanel, { type ChatMessage } from "./components/ChatPanel";
+import { flightLabel } from "./format";
 import { LocateIcon, MinusIcon, PlusIcon } from "./components/icons";
 
 const LIVE_MAX_AGE_S = 30;
@@ -28,6 +30,8 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("arrivals");
   const [tableOpen, setTableOpen] = useState(true);
   const [now, setNow] = useState(Date.now());
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chat, setChat] = useState<ChatMessage[]>([]);
   const mapRef = useRef<L.Map | null>(null);
 
   useEffect(() => {
@@ -56,6 +60,7 @@ export default function App() {
 
   const select = useCallback((id: string | null, pan = false) => {
     setSelectedId(id);
+    if (id) setChatOpen(false);
     if (!id || !pan || !mapRef.current) return;
     const d = derived.find((x) => x.a.icao24 === id);
     if (d?.a.lat != null && d.a.lon != null) {
@@ -64,9 +69,18 @@ export default function App() {
   }, [derived]);
 
   const trail = selectedId ? trails.current.get(selectedId) ?? [] : [];
+  const showDetail = selected != null && !chatOpen;
+
+  // Starter questions; one uses a real aircraft so it always has an answer.
+  const nearestAirborne = derived.find((d) => !d.a.on_ground && d.a.callsign);
+  const suggestions = [
+    "What's landing next?",
+    "How many planes are on the ground?",
+    nearestAirborne ? `Tell me about ${flightLabel(nearestAirborne)}` : "Which airlines are around right now?",
+  ];
 
   return (
-    <div className={`app ${selected ? "has-detail" : ""} ${tableOpen ? "table-open" : ""}`}>
+    <div className={`app ${showDetail || chatOpen ? "has-detail" : ""} ${tableOpen ? "table-open" : ""}`}>
       <MapView
         aircraft={derived}
         selectedId={selectedId}
@@ -83,6 +97,8 @@ export default function App() {
         onSubmit={() => { if (searchHits?.[0]) select(searchHits[0].a.icao24, true); }}
         live={live}
         now={now}
+        chatOpen={chatOpen}
+        onToggleChat={() => setChatOpen((o) => !o)}
       />
 
       <StatsCard
@@ -101,7 +117,10 @@ export default function App() {
         </button>
       </div>
 
-      {selected && <DetailPanel d={selected} serverNow={serverNow} onClose={() => setSelectedId(null)} />}
+      {showDetail && selected && <DetailPanel d={selected} serverNow={serverNow} onClose={() => setSelectedId(null)} />}
+      {chatOpen && (
+        <ChatPanel messages={chat} setMessages={setChat} suggestions={suggestions} onClose={() => setChatOpen(false)} />
+      )}
 
       <FlightTable
         tab={tab}

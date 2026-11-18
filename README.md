@@ -43,6 +43,10 @@ python -m uvicorn server:app
 Open http://127.0.0.1:8000. FastAPI serves the built React app from
 `frontend/dist`.
 
+For Ask Flive, install [Ollama](https://ollama.com), then `ollama pull qwen3:8b`
+(or set `OLLAMA_MODEL` in `.env` to another model with tool calling). Without
+it, everything else works and the chat panel shows "offline".
+
 For frontend work with hot reload, keep the server running and in a second
 terminal run `cd frontend; npm run dev`, then open http://localhost:5173 (Vite
 forwards `/ws` to the server).
@@ -62,6 +66,22 @@ recolored to navy in `frontend/src/basemap.ts`.
   detection is roadmap step 4; predicted runway/ETA is step 5.
 - All provider text is rendered as text (React escaping, `textContent` in
   Leaflet tooltips), and the server already strips callsigns to `[A-Z0-9-]`.
+- `/about.html` is the project's explainer: plain-language sections with
+  collapsible "For developers" detail, for both general readers and engineers.
+
+## Ask Flive
+
+A chat panel that answers questions about live traffic using a local LLM
+(Ollama) with tool calling. The model can't answer from memory: it calls one of
+four tools (`traffic_summary`, `list_aircraft`, `get_aircraft`,
+`landing_sequence`) that read the server's in-memory snapshot, then writes its
+reply from those results and says when Flive doesn't have the data.
+
+- `ask.py`: tools, system prompt, tool-calling loop (max 4 rounds), Ollama backend
+- `traffic.py`: status/distance/airline derivation (mirrors `frontend/src/status.ts`)
+- `POST /api/ask` (max 300 chars; 5/min and 40/hour per IP; one model call at
+  a time), `GET /api/ask/status`
+- Answers render as plain text and list which tools were used.
 
 ## Files
 
@@ -69,7 +89,9 @@ recolored to navy in `frontend/src/basemap.ts`.
 | --- | --- |
 | `server.py` | FastAPI app: 5 s poller with backoff, 15 s logging, WebSocket broadcast |
 | `adsb_feed.py` | Fetches readsb-format JSON and converts it to Flive's snapshot format (SI units) |
-| `frontend/` | React + TypeScript UI (map, stats, search, detail panel, flight list) |
+| `frontend/` | React + TypeScript UI: live map (`index.html`) and About page (`about.html`) |
+| `ask.py` | Ask Flive: LLM tool-calling loop and tools over the live snapshot |
+| `traffic.py` | Derived facts per aircraft (distance, estimated status, airline) |
 | `poll_logan.py` | Retired OpenSky poller; its OAuth2 code will be reused for nightly arrival checks |
 | `.env.example` | Template for local secrets (`.env` is gitignored) |
 

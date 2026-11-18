@@ -31,6 +31,15 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   until step 4. Never put provider text into HTML strings (Leaflet divIcons
   are static markup; tooltips use textContent). Brand: hexagon logo in
   `src/components/icons.tsx` + `public/favicon.svg`, dark navy only.
+- `ask.py` - Ask Flive (step 3): Ollama backend behind `chat(messages, tools)`,
+  4 tools over the in-memory snapshot, max 4 tool rounds, grounding system
+  prompt. `server.py` exposes `POST /api/ask` (5/min, 40/hour per IP, one model
+  call at a time) and `GET /api/ask/status`. Answers render as plain text.
+- `traffic.py` - server-side status/distance/airline; MUST stay in sync with
+  `frontend/src/status.ts` and `airlines.ts` until step 4 replaces both.
+- `frontend/about.html` + `src/about/` - public explainer page. Each section is
+  plain English first, then a collapsible "For developers" block. Update it
+  whenever behavior it describes changes (data source, statuses, AI, roadmap).
 - `poll_logan.py` - old OpenSky state-vector logger. Retired for live data; its
   OAuth2 token code is reusable for the OpenSky flights endpoints.
 - `explore.py` - (planned) pandas/matplotlib analysis of the JSONL logs.
