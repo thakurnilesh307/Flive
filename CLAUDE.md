@@ -126,6 +126,13 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   snapshot aircraft and `runway_in_use` to the snapshot; logged. `GET
   /api/eta/status`. Retrain after importing more history. Last: 1.01 min
   held-out MAE vs 4.85 straight line (3,520 landings, leave-one-day-out).
+- `train_runway.py` - per-flight runway classifiers (arrival: landing runway;
+  departure: takeoff runway while taxiing), features from
+  `dataset.arrival_runway_features` / `departure_runway_features` (shared with
+  live), `restrict_to_active` = only runways used in the last 30 min (training
+  eval and live). Bundle `data/runway_model.joblib`. Live fields:
+  `landing_runway(_p)`, `takeoff_runway(_p)`; taxiing = `dataset.taxiing()` and
+  not landed in the last 20 min. Last: 94.6% / 91.4% vs 88.9% / 88.4% baseline.
 - `explore.py` - (planned) pandas/matplotlib analysis of the JSONL logs.
 
 ## Snapshot format (do not change field names without updating all consumers)

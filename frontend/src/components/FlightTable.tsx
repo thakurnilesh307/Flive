@@ -106,7 +106,11 @@ export default function FlightTable({ tab, onTab, tabs, counts, rows, note, sear
                   <td className="muted">{describePosition(d.a) ?? `${fmtDist(d)} from KBOS`}</td>
                   <td>
                     <StatusPill status={d.status} />
-                    {d.a.landing_at ? <span className="eta-chip">lands ~{minsUntil(d.a.landing_at, serverNow)} min</span> : null}
+                    {d.a.landing_at ? (
+                      <span className="eta-chip">lands ~{minsUntil(d.a.landing_at, serverNow)} min{d.a.landing_runway ? ` · ${d.a.landing_runway}` : ""}</span>
+                    ) : d.a.takeoff_runway ? (
+                      <span className="eta-chip">to runway {d.a.takeoff_runway}</span>
+                    ) : null}
                   </td>
                 </tr>
               ))}

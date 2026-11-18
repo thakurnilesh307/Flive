@@ -99,7 +99,7 @@ export default function DetailPanel({ d, serverNow, following, onToggleFollow, o
         <div><dt>Squawk</dt><dd>{a.squawk ?? "–"}</dd></div>
       </dl>
 
-      <div className={`predict ${a.landing_at ? "has-eta" : ""}`}>
+      <div className={`predict ${a.landing_at || a.takeoff_runway ? "has-eta" : ""}`}>
         <RunwayIcon size={30} className="predict-icon" />
         {a.landing_at ? (
           <div>
@@ -114,6 +114,17 @@ export default function DetailPanel({ d, serverNow, following, onToggleFollow, o
                 : ""}
               my model, trained on past Logan landings
             </div>
+            {a.landing_runway && (
+              <div className="predict-rwy">Probably runway <b>{a.landing_runway}</b> · {Math.round((a.landing_runway_p ?? 0) * 100)}% likely</div>
+            )}
+          </div>
+        ) : a.takeoff_runway ? (
+          <div>
+            <div className="muted small">Predicted takeoff runway</div>
+            <div className="predict-title">Runway {a.takeoff_runway}
+              <span className="muted"> · {Math.round((a.takeoff_runway_p ?? 0) * 100)}% likely</span>
+            </div>
+            <div className="muted small">From where it&apos;s taxiing and which runways are in use</div>
           </div>
         ) : (
           <div>

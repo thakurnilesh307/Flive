@@ -224,7 +224,8 @@ Coverage on a live check: 99% of worldwide aircraft got a type, 86% an operator.
 | `scripts/validate_events.py` | Scores `events.py` against OpenSky's KBOS arrival records |
 | `scripts/import_history.py` | Streams adsb.lol daily archives, keeps Boston-area traces |
 | `dataset.py`, `train_eta.py` | Training rows from detected landings; model training and leave-one-day-out scoring |
-| `eta.py` | Live landing-time predictions in the server |
+| `eta.py` | Live landing-time and runway predictions in the server |
+| `train_runway.py` | Landing/takeoff runway classifiers, scored against "most-used runway" |
 | `scripts/build_aircraft_db.py` | Downloads the aircraft DB and the OpenFlights airline list into `data/` |
 | `poll_logan.py` | Retired OpenSky poller; its OAuth2 code will be reused for nightly arrival checks |
 | `.env.example` | Template for local secrets (`.env` is gitignored) |
@@ -312,6 +313,29 @@ order, and are written to the logs for scoring. First live check: 5 arrivals
 predicted 2 to 15 minutes ahead landed 0.2 to 2.6 minutes from the prediction,
 4 of 5 inside the likely range. That check also caught departures getting
 "predictions" right after liftoff, now excluded.
+
+## Runway prediction
+
+`python train_runway.py` trains two classifiers on the runways `events.py`
+detected: which runway an arrival will land on (rows every 30 s over its last 30
+minutes) and which runway a taxiing plane will take off from (rows every 15 s over
+its last 15 minutes of taxiing). Baseline to beat: "the runway Logan used most in
+the last 30 minutes". Leave-one-day-out, 9 days:
+
+| | model | baseline | closest in | furthest out |
+| --- | --- | --- | --- | --- |
+| Landing runway | **94.6%** | 88.9% | 96.9% (0-5 min) | 90.8% (20-30 min) |
+| Takeoff runway (taxiing) | **91.4%** | 88.4% | 95.1% (0-3 min) | 87.2% (8-15 min) |
+
+The first version only matched the baseline (88%) and was worse far out, picking
+runways nobody was using. Three changes fixed that: only runways used in the last
+30 minutes can win (`dataset.restrict_to_active`, same rule live), runway use as
+shares instead of counts, and the plane's position relative to every runway, so
+it can learn which of two active runways it's lined up for. The probability shown
+in the app is honest: when the model says over 90% (most of the time) it's right
+95-96% of the time. Live, `eta.py` adds `landing_runway`/`landing_runway_p` to
+arrivals and `takeoff_runway`/`takeoff_runway_p` to planes taxiing out (not ones
+that just landed), shown in the detail panel, both Logan tabs and Ask Flive.
 
 ## Roadmap
 

@@ -27,6 +27,11 @@ export interface Aircraft {
   landing_at?: number | null;
   landing_lo_at?: number | null;
   landing_hi_at?: number | null;
+  /** predicted runway (runway models) and the model's probability, 0-1 */
+  landing_runway?: string | null;
+  landing_runway_p?: number | null;
+  takeoff_runway?: string | null;
+  takeoff_runway_p?: number | null;
   /** full model name from the aircraft database, e.g. "Boeing 737-800" */
   type_desc?: string | null;
 }

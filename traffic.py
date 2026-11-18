@@ -149,6 +149,11 @@ def derive(a, api_time):
         "_predicted_min": _mins(a.get("landing_at"), api_time),
         "_predicted_lo_min": _mins(a.get("landing_lo_at"), api_time),
         "_predicted_hi_min": _mins(a.get("landing_hi_at"), api_time),
+        # Runway models (train_runway.py): runway + probability, or None.
+        "_landing_runway": a.get("landing_runway"),
+        "_landing_runway_p": a.get("landing_runway_p"),
+        "_takeoff_runway": a.get("takeoff_runway"),
+        "_takeoff_runway_p": a.get("takeoff_runway_p"),
         "squawk": a.get("squawk"),
         "seconds_since_signal": seen,
     }

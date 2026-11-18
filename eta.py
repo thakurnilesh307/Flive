@@ -25,6 +25,8 @@ import traffic
 
 HERE = Path(__file__).resolve().parent
 MODEL_PATH = HERE / "data" / "eta_model.joblib"
+RUNWAY_MODEL_PATH = HERE / "data" / "runway_model.joblib"   # train_runway.py
+TAXI_IN_S = 20 * 60          # a plane that landed this recently and is taxiing is taxiing IN
 KEEP_S = 40 * 60
 DETECT_EVERY_S = 30
 MAX_ETA_S = 35 * 60
@@ -83,8 +85,14 @@ class LivePredictor:
                 self.error = "no model yet: run dataset.py and train_eta.py"
         except Exception as e:  # missing scikit-learn, or a model from another version
             self.error = f"model not loaded ({type(e).__name__}: {e})"
+        self.runways = None
+        try:
+            import joblib
+            self.runways = joblib.load(RUNWAY_MODEL_PATH) if RUNWAY_MODEL_PATH.exists() else None
+        except Exception as e:
+            print(f"Runway model not loaded ({type(e).__name__}: {e})")
         self.tracks = defaultdict(deque)
-        self.landings = []           # recent detected landings (dicts from events.detect)
+        self.events = []             # recent detected landings AND takeoffs (dicts from events.detect)
         self.last_detect = 0.0
         self.started = time.time()
 
@@ -95,9 +103,12 @@ class LivePredictor:
     def status(self):
         b = self.bundle or {}
         cfg, n = self.runway_in_use(time.time())
+        rr = (self.runways or {}).get("report", {})
         return {"available": self.available, "error": self.error, "trained_rows": b.get("trained_rows"),
                 "trained_days": len(b.get("days", [])), "held_out_mae_min": b.get("mae_min"),
-                "runway_in_use": cfg, "landings_last_30min": n}
+                "runway_in_use": cfg, "landings_last_30min": n,
+                "runway_model": self.runways is not None,
+                "runway_accuracy": {k: v.get("model_accuracy") for k, v in rr.items()}}
 
     # ---- live state -----------------------------------------------------------------
     def _add(self, icao, s):
@@ -141,14 +152,15 @@ class LivePredictor:
             return
         start = min(v[0].t for v in tracks.values())
         found, _ = E.detect(tracks, [(start, now)])
-        seen = {(e["icao24"], round(e["time"] / 60)) for e in self.landings}
+        seen = {(e["icao24"], e["kind"], round(e["time"] / 60)) for e in self.events}
         for e in found:
-            if e["kind"] == "landing" and (e["icao24"], round(e["time"] / 60)) not in seen:
-                self.landings.append(e)
-        self.landings = [e for e in self.landings if e["time"] > now - dataset.CONFIG_WINDOW_S]
+            if (e["icao24"], e["kind"], round(e["time"] / 60)) not in seen:
+                self.events.append(e)
+        self.events = [e for e in self.events if e["time"] > now - max(dataset.CONFIG_WINDOW_S, TAXI_IN_S)]
 
     def runway_in_use(self, t):
-        recent = [e["runway"] for e in self.landings if t - dataset.CONFIG_WINDOW_S <= e["time"] <= t]
+        recent = [e["runway"] for e in self.events
+                  if e["kind"] == "landing" and t - dataset.CONFIG_WINDOW_S <= e["time"] <= t]
         if not recent:
             return None, 0
         return max(set(recent), key=recent.count), len(recent)
@@ -166,6 +178,8 @@ class LivePredictor:
         self._detect(now)
         for a in snapshot["aircraft"]:
             a["landing_at"] = a["landing_lo_at"] = a["landing_hi_at"] = None
+            a["landing_runway"] = a["landing_runway_p"] = a["takeoff_runway"] = a["takeoff_runway_p"] = None
+        self._predict_runways(snapshot, samples, now)
         if not self.available:
             return snapshot
         cfg, n_landings = self.runway_in_use(now)
@@ -204,3 +218,41 @@ class LivePredictor:
             a["landing_lo_at"] = round(s.t + max(l, 0), 1)
             a["landing_hi_at"] = round(s.t + h, 1)
         return snapshot
+
+    # ---- runways ----------------------------------------------------------------------
+    def _predict_runways(self, snapshot, samples, now):
+        """Landing runway for arrivals, takeoff runway for planes taxiing out, each with
+        the model's probability (only runways used in the last 30 min can win, the same
+        rule train_runway.py was scored with)."""
+        if not self.runways:
+            return
+        import pandas as pd
+        use = dataset.RunwayUse(self.events)
+        land_active = set(use.counts("landing", now))
+        take_active = set(use.counts("takeoff", now))
+        flow = {i for i, s in samples.items() if not s.on_ground and s.alt_ft is not None
+                and s.alt_ft < 8000 and dataset.dist_nm(s.lat, s.lon) < 15}
+        just_landed = {e["icao24"] for e in self.events if e["kind"] == "landing" and e["time"] > now - TAXI_IN_S}
+        arr, dep = [], []
+        for a in snapshot["aircraft"]:
+            s = samples.get(a.get("icao24"))
+            if not s:
+                continue
+            if dataset.usable(s):
+                d = dataset.dist_nm(s.lat, s.lon)
+                status = traffic.classify(a, d, s.alt_ft, s.gs_kt, s.vs_fpm)
+                recent = self.tracks.get(a["icao24"], ())
+                if is_arrival(s, status, any(x.on_ground for x in recent if x.t >= s.t - 300)):
+                    arr.append((a, dataset.arrival_runway_features(s, now, len(flow - {a["icao24"]}), use)))
+            elif dataset.taxiing(s) and a["icao24"] not in just_landed:
+                dep.append((a, dataset.departure_runway_features(s, now, use)))
+        for items, model_key, active, field in ((arr, "arrival", land_active, "landing_runway"),
+                                                (dep, "departure", take_active, "takeoff_runway")):
+            if not items:
+                continue
+            model = self.runways[model_key]
+            X = pd.DataFrame([f for _, f in items])[self.runways[f"{model_key}_features"]].astype(float)
+            proba = dataset.restrict_to_active(model.classes_, model.predict_proba(X), active)
+            for (a, _), p in zip(items, proba):
+                i = int(p.argmax())
+                a[field], a[f"{field}_p"] = str(model.classes_[i]), round(float(p[i]), 2)

@@ -398,6 +398,14 @@ export default function About() {
                 and 2.6 minutes from what it predicted.
               </li>
               <li>
+                <b>Predict which runway each flight uses (done, and live).</b> Logan often lands or takes off on two runways at
+                once, so which one a plane gets isn&apos;t obvious. A second model guesses the landing runway for arrivals and the
+                takeoff runway for planes still taxiing, with how sure it is. On days it never saw, it got the landing runway right
+                95% of the time and the takeoff runway 91% of the time, versus about 88% for just guessing &quot;whichever runway
+                Logan has been using most&quot;. My first version only tied that simple guess, until I stopped it from picking
+                runways nobody was using.
+              </li>
+              <li>
                 <b>Check it against what really happened.</b> Every night, compare the predictions with real landings, both
                 the ones Flive detected and the official arrival records from OpenSky. I&apos;ll post the results, including the
                 parts where it&apos;s wrong.

@@ -234,6 +234,7 @@ button { font: inherit; color: inherit; }
 .predict-icon { color: var(--muted); flex: none; }
 .predict.has-eta { border-style: solid; border-color: rgba(60, 207, 135, .35); background: rgba(60, 207, 135, .06); }
 .predict.has-eta .predict-icon { color: var(--green); }
+.predict-rwy { margin-top: 6px; font-size: 13px; color: var(--text); }
 .eta-chip { margin-left: 8px; color: var(--green); font-size: 12px; white-space: nowrap; }
 .predict-title { font-weight: 600; font-size: 16px; margin: 2px 0; }
 .detail-foot { display: flex; justify-content: space-between; margin-top: 14px; }

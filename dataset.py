@@ -34,6 +34,8 @@ MIN_GS_KT = 60
 CONFIG_WINDOW_S = 30 * 60  # "runway in use" = most common landing runway in the last 30 min
 BOSTON = ZoneInfo("America/New_York")
 LANDING_RUNWAYS = ["04L", "04R", "09", "15R", "22L", "27", "32", "33L"]
+TAKEOFF_RUNWAYS = ["04L", "04R", "09", "14", "15R", "22L", "22R", "27", "32", "33L"]
+TAXI_MIN_KT, TAXI_MAX_KT = 3, 40   # moving on the ground, but not yet on the takeoff roll
 
 
 def bearing(lat, lon):
@@ -122,6 +124,101 @@ def feature_row(s, t, traffic_15nm, runway_in_use, landings_30min):
     for rw in LANDING_RUNWAYS:
         row[f"cfg_{rw}"] = int(runway_in_use == rw)
     return row
+
+
+class RunwayUse:
+    """How many landings and takeoffs each runway had in the 30 minutes before t.
+    Logan often uses two runways at once for each, so counts say more than
+    'the most used one'. Built from events.detect output (training) or the live
+    predictor's recent events (serving): same class either way."""
+
+    def __init__(self, events_list):
+        self.by_kind = {}
+        for kind in ("landing", "takeoff"):
+            evs = sorted((e for e in events_list if e["kind"] == kind), key=lambda e: e["time"])
+            self.by_kind[kind] = ([e["time"] for e in evs], [e["runway"] for e in evs])
+
+    def counts(self, kind, t):
+        times, rwys = self.by_kind[kind]
+        lo = bisect.bisect_left(times, t - CONFIG_WINDOW_S)
+        hi = bisect.bisect_left(times, t)
+        return Counter(rwys[lo:hi])
+
+
+def _use_features(use, t):
+    """Share of the last 30 min's landings/takeoffs on each runway (0-1): "70% on 27,
+    30% on 33L" says more than raw counts, which depend on how busy it was."""
+    row = {}
+    land, take = use.counts("landing", t), use.counts("takeoff", t)
+    nl, nt = max(sum(land.values()), 1), max(sum(take.values()), 1)
+    for rw in LANDING_RUNWAYS:
+        row[f"land_{rw}"] = round(land.get(rw, 0) / nl, 3)
+    for rw in TAKEOFF_RUNWAYS:
+        row[f"take_{rw}"] = round(take.get(rw, 0) / nt, 3)
+    return row, land, take
+
+
+def arrival_runway_features(s, t, traffic_15nm, use):
+    """Inputs for "which runway will this arrival land on": the landing-time inputs
+    plus position in nm and per-runway use in the last 30 min."""
+    row, land, _ = _use_features(use, t)
+    cfg = land.most_common(1)[0][0] if land else None
+    row.update(feature_row(s, t, traffic_15nm, cfg, sum(land.values())))
+    x, y = E._xy(s.lat, s.lon)
+    row["x_nm"], row["y_nm"] = round(x, 3), round(y, 3)
+    # Where the plane is relative to EVERY landing runway's approach, so the model can
+    # learn "lined up with 33L, not 27" when two runways are in use.
+    for rw in LANDING_RUNWAYS:
+        along, cross = _ENDS[rw].offsets(s.lat, s.lon)
+        row[f"along_{rw}"], row[f"cross_{rw}"] = round(along, 2), round(cross, 2)
+        row[f"hdg_{rw}"] = None if s.track is None else round(E._angle_diff(s.track, _ENDS[rw].heading), 1)
+    return row
+
+
+def restrict_to_active(classes, proba, active):
+    """Zero out runways nobody has used in the last 30 min (when some have been used)
+    and renormalise. Used in training evaluation AND live, so both see the same rule."""
+    import numpy as np
+    if not active:
+        return proba
+    mask = np.array([c in active for c in classes], dtype=float)
+    if not mask.any():
+        return proba
+    p = proba * mask
+    total = p.sum(axis=-1, keepdims=True)
+    return np.where(total > 0, p / np.where(total > 0, total, 1), proba)
+
+
+def departure_runway_features(s, t, use):
+    """Inputs for "which runway will this taxiing plane take off from": where it is on
+    the airport and which way it's moving, how far each runway end is, its size, and
+    recent runway use."""
+    row, _, take = _use_features(use, t)
+    x, y = E._xy(s.lat, s.lon)
+    hour = datetime.fromtimestamp(t, BOSTON).hour
+    row.update({
+        "x_nm": round(x, 4), "y_nm": round(y, 4),
+        "gs_kt": None if s.gs_kt is None else round(s.gs_kt, 1),
+        "track_sin": None if s.track is None else round(math.sin(math.radians(s.track)), 4),
+        "track_cos": None if s.track is None else round(math.cos(math.radians(s.track)), 4),
+        "category": s.category,
+        "hour_sin": round(math.sin(2 * math.pi * hour / 24), 4),
+        "hour_cos": round(math.cos(2 * math.pi * hour / 24), 4),
+        "take_total": sum(take.values()),
+    })
+    for rw in TAKEOFF_RUNWAYS:
+        r = _ENDS[rw]
+        row[f"thr_{rw}_nm"] = round(math.hypot(x - r.x0, y - r.y0), 3)
+    top = take.most_common(1)[0][0] if take else None
+    for rw in TAKEOFF_RUNWAYS:
+        row[f"topdep_{rw}"] = int(top == rw)
+    return row
+
+
+def taxiing(s):
+    """On the ground at Logan and moving, but not yet on the takeoff roll."""
+    return (s.on_ground and s.gs_kt is not None and TAXI_MIN_KT <= s.gs_kt <= TAXI_MAX_KT
+            and dist_nm(s.lat, s.lon) < 3 and (s.category is None or s.category < 14))
 
 
 def usable(s):

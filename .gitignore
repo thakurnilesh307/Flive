@@ -31,3 +31,4 @@ data/events*.csv
 data/history/
 # Model dataset/artifacts (dataset.py, train_eta.py)
 data/eta_*
+data/runway_*

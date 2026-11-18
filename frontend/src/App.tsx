@@ -117,7 +117,10 @@ export default function App() {
     arrivals: derived
       .filter((d) => isArriving(d.status) || d.a.landing_at != null)
       .sort((x, y) => (x.a.landing_at ?? Infinity) - (y.a.landing_at ?? Infinity)),
-    departures: derived.filter((d) => d.status === "departing"),
+    // Departures: planes taxiing out (with a predicted runway), then ones that just took off.
+    departures: derived
+      .filter((d) => d.status === "departing" || d.a.takeoff_runway != null)
+      .sort((x, y) => Number(x.status === "departing") - Number(y.status === "departing")),
     inview: inView.slice(0, MAX_VIEW_ROWS),
   }), [derived, inView]);
   const counts = { arrivals: lists.arrivals.length, departures: lists.departures.length, inview: inViewTotal };
@@ -125,7 +128,9 @@ export default function App() {
   const tableNote = activeTab === "inview"
     ? (inViewTotal > MAX_VIEW_ROWS ? `Nearest ${MAX_VIEW_ROWS} to the map centre` : "Nearest to the map centre first")
     : activeTab === "arrivals"
-      ? "Sorted by predicted landing time (my model) · statuses are estimates"
+      ? "Sorted by predicted landing time · runway and time are my model's guesses"
+      : activeTab === "departures"
+      ? "Taxiing out (with predicted runway), then just departed"
       : "Logan statuses are my best guess from position and speed";
 
   // Selecting a plane always (re)starts following it; MapView flies the camera there.
