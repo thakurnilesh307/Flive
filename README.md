@@ -78,10 +78,16 @@ the interval follows the daily budget: every ~90 s with a free OpenSky account,
 every 15 minutes anonymously. World snapshots stay in memory, in a grid index
 for fast map-view queries, and are never logged.
 
-So far this is server-side only (`GET /api/world/stats`,
-`GET /api/world?bbox=west,south,east,north`). Next: send each browser only the
-aircraft in its map view, then move aircraft rendering to MapLibre (GPU) so
-thousands of planes stay smooth.
+Each browser only gets the aircraft in its map view: the page sends its map
+bounds over the WebSocket (`{"type":"view","bbox":[...]}`) and the server
+replies with compact rows (arrays plus a field list, ~4x smaller than objects)
+for that area, capped at 2,000 and thinned evenly when zoomed out. A whole-world
+view is ~160 KB per update instead of the full ~700 KB, and a region is a few
+KB. Pages that never send a view keep getting only the Boston feed.
+
+For now the UI shows a "Worldwide in view" count. Next: move aircraft rendering
+to MapLibre (GPU) so thousands of planes stay smooth. Debug endpoints:
+`GET /api/world/stats`, `GET /api/world?bbox=west,south,east,north`.
 
 ## Ask Flive
 

@@ -39,16 +39,68 @@ DIST = HERE / "frontend" / "dist"
 LOG = HERE / f"logan_{time.strftime('%Y%m%d_%H%M')}.jsonl"
 
 latest = None                 # most recent snapshot, sent to new viewers
-clients: set[WebSocket] = set()
+WORLD_VIEW_LIMIT = 2000       # max world aircraft per message (thinned evenly beyond this)
+
+
+class Client:
+    """One browser connection. Sends are serialized: the Boston poller, the world
+    poller and view changes can all want to send at the same moment."""
+
+    def __init__(self, ws: WebSocket):
+        self.ws = ws
+        self.view = None              # (west, south, east, north) once the page asks for world data
+        self.lock = asyncio.Lock()
+
+    async def send(self, text: str):
+        async with self.lock:
+            await self.ws.send_text(text)
+
+
+clients: set[Client] = set()
 
 
 async def broadcast(snap):
+    """Boston snapshot to everyone (unchanged format: no "type" field)."""
     msg = json.dumps(snap)
-    for ws in list(clients):
+    for c in list(clients):
         try:
-            await ws.send_text(msg)
+            await c.send(msg)
         except Exception:
-            clients.discard(ws)   # browser went away mid-send
+            clients.discard(c)   # browser went away mid-send
+
+
+def world_message(view):
+    """Compact world aircraft for a client view, minus aircraft the Boston feed covers.
+    `view` is (visible_box, padded_box): rows come from the padded box, the
+    count shown to the user from the visible one."""
+    visible, padded = view
+    local = {a["icao24"] for a in (latest or {}).get("aircraft", [])}
+    rows, _ = world.query(*padded, limit=WORLD_VIEW_LIMIT + len(local))
+    rows = [a for a in rows if a["icao24"] not in local][:WORLD_VIEW_LIMIT]
+    visible_rows, _ = world.query(*visible, limit=10 ** 6)
+    total_visible = sum(1 for a in visible_rows if a["icao24"] not in local)
+    snap = world.snapshot
+    return json.dumps({
+        "type": "world",
+        "api_time": snap["api_time"] if snap else None,
+        "next_update_s": world_feed.poll_interval(),
+        "total_in_view": total_visible,
+        "fields": world_feed.COMPACT_FIELDS,
+        "aircraft": [world_feed.compact_row(a) for a in rows],
+    }, separators=(",", ":"))
+
+
+async def send_world(c: Client):
+    if c.view and world.snapshot:
+        try:
+            await c.send(world_message(c.view))
+        except Exception:
+            clients.discard(c)
+
+
+async def broadcast_world():
+    for c in list(clients):
+        await send_world(c)
 
 
 def backoff(failures):
@@ -97,6 +149,7 @@ async def world_poller():
             snap, credits = await asyncio.to_thread(world_feed.poll_once)
             world.update(snap, credits)
             failures = 0
+            await broadcast_world()
             print(f"World: {len(snap['aircraft'])} aircraft, {snap['bytes'] // 1024} KB, "
                   f"credits left {credits if credits is not None else '?'}")
         except RateLimited as e:
@@ -132,14 +185,30 @@ app = FastAPI(lifespan=lifespan)
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
     await ws.accept()
-    clients.add(ws)
+    c = Client(ws)
+    clients.add(c)
     if latest:                        # don't make new viewers wait for the next poll
-        await ws.send_text(json.dumps(latest))
+        await c.send(json.dumps(latest))
     try:
         while True:
-            await ws.receive_text()   # just keeps the connection open
+            text = await ws.receive_text()
+            # Only message type so far: {"type": "view", "bbox": [w, s, e, n]}.
+            # Pages that never send one never get world data (old pages keep working).
+            if len(text) > 300:
+                continue
+            try:
+                msg = json.loads(text)
+            except ValueError:
+                continue
+            if isinstance(msg, dict) and msg.get("type") == "view":
+                view = world_feed.parse_view(msg)
+                if view:
+                    c.view = view
+                    await send_world(c)
     except WebSocketDisconnect:
-        clients.discard(ws)
+        pass
+    finally:
+        clients.discard(c)
 
 
 # --- Ask Flive --------------------------------------------------------------

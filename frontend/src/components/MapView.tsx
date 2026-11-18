@@ -9,7 +9,7 @@ import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 // After bundling, MapLibre can't find its worker next to our JS; tell it where Vite put it.
 setWorkerUrl(maplibreWorkerUrl);
 import type { Derived } from "../status";
-import type { LatLon } from "../types";
+import type { BBox, LatLon } from "../types";
 import { KBOS, MS_TO_KT, project } from "../geo";
 import { flightLabel } from "../format";
 import { PLANE_PATH } from "./icons";
@@ -24,6 +24,8 @@ interface Props {
   clockSkew: number;
   onSelect: (id: string | null) => void;
   onMapReady: (map: L.Map) => void;
+  /** called (debounced) with the visible bounds whenever the view changes */
+  onViewChange?: (bbox: BBox) => void;
 }
 
 const STALE_S = 30;           // fade aircraft we haven't heard from in this long
@@ -44,20 +46,20 @@ function estimate(d: Derived, serverNow: number): LatLon | null {
   return project([a.lat, a.lon], a.track_deg, a.velocity_ms * MS_TO_KT, dt);
 }
 
-export default function MapView({ aircraft, selectedId, dimmed, trail, clockSkew, onSelect, onMapReady }: Props) {
+export default function MapView({ aircraft, selectedId, dimmed, trail, clockSkew, onSelect, onMapReady, onViewChange }: Props) {
   const divRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markers = useRef(new Map<string, L.Marker>());
   const trailLine = useRef<L.Polyline | null>(null);
 
   // Latest props for the animation timer and Leaflet callbacks.
-  const live = useRef({ aircraft, selectedId, trail, clockSkew, onSelect });
-  live.current = { aircraft, selectedId, trail, clockSkew, onSelect };
+  const live = useRef({ aircraft, selectedId, trail, clockSkew, onSelect, onViewChange });
+  live.current = { aircraft, selectedId, trail, clockSkew, onSelect, onViewChange };
 
   // Create the map once.
   useEffect(() => {
     const map = L.map(divRef.current!, {
-      center: KBOS, zoom: 10, minZoom: 7, maxZoom: 15, zoomControl: false,
+      center: KBOS, zoom: 10, minZoom: 2, maxZoom: 15, zoomControl: false, worldCopyJump: true,
       attributionControl: false, // credits are rendered by App, below the flight list
     });
     // Vector basemap: OpenFreeMap is free with no API key (CARTO now needs one).
@@ -71,6 +73,21 @@ export default function MapView({ aircraft, selectedId, dimmed, trail, clockSkew
     map.on("click", () => live.current.onSelect(null));
     mapRef.current = map;
     onMapReady(map);
+
+    // Report the visible area so the server sends worldwide aircraft for it.
+    // Debounced: a pan fires many events; the server only needs the final view.
+    let viewTimer: number | undefined;
+    const reportView = () => {
+      window.clearTimeout(viewTimer);
+      viewTimer = window.setTimeout(() => {
+        const b = map.getBounds();
+        live.current.onViewChange?.([
+          b.getWest(), Math.max(-90, b.getSouth()), b.getEast(), Math.min(90, b.getNorth()),
+        ]);
+      }, 300);
+    };
+    map.on("moveend", reportView);
+    reportView();
 
     // Dead reckoning: glide markers between 5 s updates.
     const timer = window.setInterval(() => {
@@ -94,6 +111,7 @@ export default function MapView({ aircraft, selectedId, dimmed, trail, clockSkew
 
     return () => {
       window.clearInterval(timer);
+      window.clearTimeout(viewTimer);
       map.remove();
       mapRef.current = null;
       markers.current.clear();

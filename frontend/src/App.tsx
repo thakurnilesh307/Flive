@@ -24,7 +24,7 @@ function matches(d: Derived, q: string): boolean {
 }
 
 export default function App() {
-  const { snapshot, connected, clockSkew, trails } = useLiveFeed();
+  const { snapshot, connected, clockSkew, trails, world, sendView } = useLiveFeed();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<Tab>("arrivals");
@@ -89,6 +89,7 @@ export default function App() {
         clockSkew={clockSkew}
         onSelect={(id) => select(id)}
         onMapReady={(m) => { mapRef.current = m; }}
+        onViewChange={sendView}
       />
 
       <TopBar
@@ -105,6 +106,8 @@ export default function App() {
         tracked={derived.filter((d) => d.a.lat != null).length}
         inbound={lists.arrivals.length}
         approach={derived.filter((d) => d.status === "approach").length}
+        worldInView={world ? world.totalInView : null}
+        worldEveryS={world?.nextUpdateS ?? 90}
       />
 
       <div className="map-controls">

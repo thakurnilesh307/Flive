@@ -26,3 +26,14 @@ export interface Snapshot {
 }
 
 export type LatLon = [number, number];
+
+/** Worldwide aircraft in the current map view (OpenSky, slower updates). */
+export interface WorldView {
+  apiTime: number | null;
+  nextUpdateS: number;
+  totalInView: number;
+  aircraft: Aircraft[];
+}
+
+/** [west, south, east, north] in degrees; east >= west (may exceed ±180 when the map wraps). */
+export type BBox = [number, number, number, number];

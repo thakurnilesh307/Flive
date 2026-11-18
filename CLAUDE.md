@@ -48,8 +48,14 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   antimeridian and thins evenly across cells when over the limit. Boston stays
   on the 5 s adsb.fi feed for statuses, Ask Flive, logs and predictions.
   Endpoints: `GET /api/world/stats`, `GET /api/world?bbox=w,s,e,n&limit=`.
+  /ws protocol: Boston snapshots unchanged (no "type" field). A page may send
+  `{"type":"view","bbox":[w,s,e,n]}` (unwrapped, east >= west); it then gets
+  `{"type":"world", fields, aircraft:[[...]], total_in_view, next_update_s}`
+  immediately and after every world refresh: compact rows from a 25%-padded
+  box, capped at 2000, Boston-feed aircraft removed, count from the visible box.
+  Pages that never send a view never get world data.
   Plan: (1) feed + store [done], (2) viewport subscription on /ws with compact
-  format, (3) MapLibre-native aircraft layer replacing Leaflet (confirm with
+  format [done; UI shows "Worldwide in view" count only], (3) MapLibre-native aircraft layer replacing Leaflet (confirm with
   user before starting), (4) Ask Flive region tools via OurAirports,
   (5) About/README "scaling to the world" section.
 - `opensky_auth.py` - shared OpenSky OAuth2 token handling (thread-safe).

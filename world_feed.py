@@ -90,6 +90,50 @@ def poll_once():
     return snap, remaining
 
 
+# --- compact wire format ----------------------------------------------------
+# A world view can hold thousands of aircraft, so the WebSocket sends rows as
+# arrays with a field list instead of full objects (~4x smaller), rounded to
+# what the map needs. Same field names as the snapshot format, SI units.
+COMPACT_FIELDS = ["icao24", "callsign", "lat", "lon", "baro_alt_m", "on_ground",
+                  "velocity_ms", "track_deg", "vert_rate_ms", "time_position", "category"]
+
+
+def _r(v, nd):
+    return None if v is None else (round(v, nd) if nd else int(round(v)))
+
+
+def compact_row(a):
+    return [a["icao24"], a["callsign"], _r(a["lat"], 4), _r(a["lon"], 4), _r(a["baro_alt_m"], 0),
+            1 if a["on_ground"] else 0, _r(a["velocity_ms"], 1), _r(a["track_deg"], 0),
+            _r(a["vert_rate_ms"], 1), _r(a["time_position"], 0), a["category"]]
+
+
+def _wrap(x):
+    return ((x + 180) % 360) - 180
+
+
+def parse_view(msg):
+    """Validate a client 'view' message -> (visible, padded) boxes, or None.
+    Each box is (west, south, east, north) with longitudes in -180..180
+    (west > east means it crosses the antimeridian). The padded box is grown
+    25% each way so short pans don't run off the data; counts use `visible`."""
+    try:
+        w, s, e, n = (float(v) for v in msg["bbox"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not all(math.isfinite(v) for v in (w, s, e, n)) or s > n or e < w:
+        return None
+    s, n = max(-90.0, s), min(90.0, n)
+    span, pad_y = e - w, (n - s) * .25
+    ps, pn = max(-90.0, s - pad_y), min(90.0, n + pad_y)
+    if span >= 300:                       # effectively the whole world
+        return (-180.0, s, 180.0, n), (-180.0, ps, 180.0, pn)
+    visible = (_wrap(w), s, _wrap(e), n) if span < 360 else (-180.0, s, 180.0, n)
+    pad_x = span * .25
+    padded = (_wrap(w - pad_x), ps, _wrap(e + pad_x), pn) if span * 1.5 < 360 else (-180.0, ps, 180.0, pn)
+    return visible, padded
+
+
 def _cell(lat, lon):
     return (math.floor(lat / CELL_DEG), math.floor(lon / CELL_DEG))
 

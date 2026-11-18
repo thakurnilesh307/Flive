@@ -169,6 +169,7 @@ button { font: inherit; color: inherit; }
 .stat-icon.blue { color: #5aa8ff; }
 .stat-icon.cyan { color: var(--cyan); }
 .stat-icon.amber { color: var(--amber); }
+.stat-icon.violet { color: var(--violet); }
 
 /* ---------- map controls ---------- */
 .map-controls { position: absolute; z-index: 5; left: var(--gutter); bottom: 250px; display: flex; align-items: flex-end; gap: 12px; transition: bottom .25s; }
