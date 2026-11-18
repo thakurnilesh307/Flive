@@ -184,6 +184,8 @@ button { font: inherit; color: inherit; }
   color: #fff;
 }
 .detail-title { flex: 1; min-width: 0; }
+.follow-btn { color: var(--muted); }
+.follow-btn.on { color: #5aa8ff; background: var(--accent-soft); }
 .detail-title h2 { margin: 0; font-size: 22px; letter-spacing: -.01em; }
 .detail-title p { margin: 2px 0 0; color: var(--muted); }
 .hero {

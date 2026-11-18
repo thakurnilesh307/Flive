@@ -28,7 +28,10 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   globe projection when zoomed out. Aircraft are GPU symbol layers
   (`local-planes` = Boston, redrawn ~30 fps; `world-planes` = world, 4 fps,
   glide capped at 120 s; one requestAnimationFrame loop, and fresh reports
-  blend in over 1.2 s / 2.5 s via `makeSmoother` instead of snapping) using one SDF plane image recolored by
+  blend in over 1.2 s / 2.5 s via `makeSmoother` instead of snapping). Selecting
+  a plane flies in and follows it (jumpTo every frame on the drawn position,
+  padded around the detail panel/table; dragstart stops it; a selected world
+  plane is drawn in the local source so it moves at frame rate) using one SDF plane image recolored by
   feature props (sel/ground/dim/stale). MapLibre 6 needs `setWorkerUrl` with
   the worker imported via `?url`. `.app .map` selector beats MapLibre's own
   `position: relative`. `zoom` must be the top-level input of size

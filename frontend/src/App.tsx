@@ -27,6 +27,7 @@ function matches(d: Derived, q: string): boolean {
 export default function App() {
   const { snapshot, connected, clockSkew, trails, world, sendView, keepAircraft } = useLiveFeed();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [follow, setFollow] = useState(true);
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<Tab>("arrivals");
   const [tableOpen, setTableOpen] = useState(true);
@@ -69,16 +70,11 @@ export default function App() {
   }), [derived]);
   const counts = { arrivals: lists.arrivals.length, departures: lists.departures.length, all: derived.length };
 
-  const select = useCallback((id: string | null, pan = false) => {
+  // Selecting a plane always (re)starts following it; MapView flies the camera there.
+  const select = useCallback((id: string | null) => {
     setSelectedId(id);
-    if (id) setChatOpen(false);
-    const map = mapRef.current;
-    if (!id || !pan || !map) return;
-    const d = derived.find((x) => x.a.icao24 === id) ?? worldDerived.find((x) => x.a.icao24 === id);
-    if (d?.a.lat != null && d.a.lon != null && !map.getBounds().contains([d.a.lon, d.a.lat])) {
-      map.easeTo({ center: [d.a.lon, d.a.lat], duration: 600 });
-    }
-  }, [derived, worldDerived]);
+    if (id) { setChatOpen(false); setFollow(true); }
+  }, []);
 
   const trail = selectedId ? trails.current.get(selectedId) ?? [] : [];
   const showDetail = selected != null && !chatOpen;
@@ -103,12 +99,14 @@ export default function App() {
         onSelect={(id) => select(id)}
         onMapReady={(m) => { mapRef.current = m; }}
         onViewChange={sendView}
+        follow={follow}
+        onFollowChange={setFollow}
       />
 
       <TopBar
         query={query}
         onQuery={setQuery}
-        onSubmit={() => { if (searchHits?.[0]) select(searchHits[0].a.icao24, true); }}
+        onSubmit={() => { if (searchHits?.[0]) select(searchHits[0].a.icao24); }}
         live={live}
         now={now}
         chatOpen={chatOpen}
@@ -133,7 +131,7 @@ export default function App() {
         </button>
       </div>
 
-      {showDetail && selected && <DetailPanel d={selected} serverNow={serverNow} onClose={() => setSelectedId(null)} />}
+      {showDetail && selected && <DetailPanel d={selected} serverNow={serverNow} following={follow} onToggleFollow={() => setFollow((f) => !f)} onClose={() => setSelectedId(null)} />}
       {chatOpen && (
         <ChatPanel messages={chat} setMessages={setChat} suggestions={suggestions} onClose={() => setChatOpen(false)} />
       )}
@@ -145,7 +143,7 @@ export default function App() {
         rows={searchHits ? searchHits.slice(0, MAX_SEARCH_ROWS) : lists[tab]}
         searching={searchHits != null}
         selectedId={selectedId}
-        onSelect={(id) => select(id, true)}
+        onSelect={(id) => select(id)}
         open={tableOpen}
         onToggle={() => setTableOpen((o) => !o)}
       />

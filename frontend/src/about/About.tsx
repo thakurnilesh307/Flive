@@ -95,7 +95,9 @@ export default function About() {
             <p>
               Every plane icon is a real aircraft, pointed the way it&apos;s moving. The smaller grey ones are on the
               ground at Logan. Click a plane (or a row in the list at the bottom) and you get its airline, aircraft type,
-              altitude, speed, and a dashed trail of where it&apos;s been since you opened the page.
+              altitude, speed, and a dashed trail of where it&apos;s been since you opened the page. The map also zooms in and follows
+              the plane, so it stays in the middle while the map moves under it. Drag the map to stop following, or hit the
+              arrow button in the panel to start again.
             </p>
             <p>The colours are my guess at what each plane is doing:</p>
             <ul className="legend">

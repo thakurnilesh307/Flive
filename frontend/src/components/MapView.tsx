@@ -30,6 +30,9 @@ interface Props {
   onMapReady: (map: GLMap) => void;
   /** called (debounced) with the visible bounds whenever the view changes */
   onViewChange?: (bbox: BBox) => void;
+  /** keep the camera centred on the selected plane */
+  follow: boolean;
+  onFollowChange: (follow: boolean) => void;
 }
 
 const STALE_S = 30;              // fade aircraft we haven't heard from in this long
@@ -39,7 +42,10 @@ const LOCAL_FRAME_MS = 33;  // Boston planes redraw ~30 times a second (few plan
 const WORLD_FRAME_MS = 250; // world planes redraw 4 times a second (up to 2,000 planes)
 const LOCAL_BLEND_MS = 1200; // when a real position arrives, slide to it over this long instead of snapping
 const WORLD_BLEND_MS = 2500;
-const MAX_BLEND_DEG = 0.3;   // corrections bigger than this (~18 nm) are real jumps: snap
+const MAX_BLEND_DEG = 0.3;
+const FOLLOW_ZOOM = 11;       // clicking a plane zooms in at least this far
+const FLY_IN_MS = 900;        // how long the zoom-in to a clicked plane takes
+const VIEW_REPORT_MAX_MS = 1500; // while following, the map moves every frame: still report the view this often   // corrections bigger than this (~18 nm) are real jumps: snap
 const STYLE_URL = "https://tiles.openfreemap.org/styles/dark";
 type FC = FeatureCollection<Geometry>;
 
@@ -135,11 +141,33 @@ function visibleBox(map: GLMap): BBox {
   return [Math.min(...un), Math.max(-90, Math.min(...lats)), Math.max(...un), Math.min(90, Math.max(...lats))];
 }
 
+/**
+ * Camera padding so a followed plane sits in the middle of the part of the map you
+ * can actually see, not behind the detail panel (right) or flight list (bottom).
+ */
+function freePadding(map: GLMap) {
+  const box = map.getCanvasContainer().getBoundingClientRect();
+  const pad = { top: 0, right: 0, bottom: 0, left: 0 };
+  for (const el of document.querySelectorAll<HTMLElement>(".detail, .table-panel")) {
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    if (r.left > box.left + box.width * 0.5) pad.right = Math.max(pad.right, box.right - r.left);
+    else if (r.top > box.top + box.height * 0.3) pad.bottom = Math.max(pad.bottom, box.bottom - r.top);
+  }
+  // Never squeeze the usable area below ~200 px.
+  pad.right = Math.min(pad.right, Math.max(0, box.width - 200));
+  pad.bottom = Math.min(pad.bottom, Math.max(0, box.height - 200));
+  return pad;
+}
+
+const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+
 export default function MapView(props: Props) {
   const divRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<GLMap | null>(null);
   const ready = useRef(false);
   const redraw = useRef<(() => void) | null>(null);
+  const startFollow = useRef<(() => void) | null>(null);
 
   // Latest props for timers and MapLibre callbacks.
   const live = useRef(props);
@@ -235,7 +263,8 @@ export default function MapView(props: Props) {
     // Build features with dead-reckoned positions.
     const localSmooth = makeSmoother(LOCAL_BLEND_MS);
     const worldSmooth = makeSmoother(WORLD_BLEND_MS);
-    const features = (list: Derived[], serverNow: number, cap: number, keepTrail: boolean, sm: ReturnType<typeof makeSmoother>) => {
+    const features = (list: Derived[], serverNow: number, cap: number, sm: ReturnType<typeof makeSmoother>,
+                      opts: { skip?: string | null; prune?: boolean } = {}) => {
       const { selectedId, dimmed } = live.current;
       const out: Feature<Point>[] = [];
       let selectedPos: LatLon | null = null;
@@ -247,6 +276,7 @@ export default function MapView(props: Props) {
         const a = d.a;
         alive.add(a.icao24);
         const pos = sm.place(a.icao24, a.time_position, est, now);
+        if (a.icao24 === opts.skip) continue; // drawn by the other source this frame
         const sel = a.icao24 === selectedId;
         if (sel) selectedPos = pos;
         out.push({
@@ -260,9 +290,8 @@ export default function MapView(props: Props) {
           },
         });
       }
-      sm.prune(alive);
-      if (keepTrail && selectedPos) setTrail(selectedPos);
-      return { type: "FeatureCollection", features: out } as FC;
+      if (opts.prune !== false) sm.prune(alive);
+      return { out, selectedPos };
     };
 
     const setTrail = (head: LatLon | null) => {
@@ -274,37 +303,84 @@ export default function MapView(props: Props) {
         : empty());
     };
 
+    // Where the selected plane was drawn this frame (the camera follows this exact point).
+    let selectedPos: LatLon | null = null;
+    const selectedWorld = () => {
+      const { aircraft, world, selectedId } = live.current;
+      if (!selectedId || aircraft.some((d) => d.a.icao24 === selectedId)) return null;
+      return world.find((d) => d.a.icao24 === selectedId) ?? null;
+    };
+
+    // Boston planes, plus the selected worldwide plane: it moves to this fast
+    // source so it glides as smoothly as the camera that follows it.
     const tickLocal = () => {
       if (!ready.current) return;
-      const { aircraft, clockSkew, selectedId } = live.current;
+      const { aircraft, clockSkew } = live.current;
       const serverNow = Date.now() / 1000 + clockSkew;
-      (map.getSource("local") as GeoJSONSource).setData(features(aircraft, serverNow, MAX_EXTRAPOLATE_S, true, localSmooth));
-      if (!selectedId || !aircraft.some((d) => d.a.icao24 === selectedId)) setTrail(null);
+      const loc = features(aircraft, serverNow, MAX_EXTRAPOLATE_S, localSmooth);
+      const selW = selectedWorld();
+      const w = selW ? features([selW], serverNow, WORLD_EXTRAPOLATE_S, worldSmooth, { prune: false }) : null;
+      (map.getSource("local") as GeoJSONSource).setData({ type: "FeatureCollection", features: [...loc.out, ...(w?.out ?? [])] } as FC);
+      selectedPos = loc.selectedPos ?? w?.selectedPos ?? null;
+      setTrail(loc.selectedPos);
     };
     const tickWorld = () => {
       if (!ready.current) return;
       const { world, clockSkew } = live.current;
       const serverNow = Date.now() / 1000 + clockSkew;
-      (map.getSource("world") as GeoJSONSource).setData(features(world, serverNow, WORLD_EXTRAPOLATE_S, false, worldSmooth));
+      const res = features(world, serverNow, WORLD_EXTRAPOLATE_S, worldSmooth, { skip: selectedWorld()?.a.icao24 });
+      (map.getSource("world") as GeoJSONSource).setData({ type: "FeatureCollection", features: res.out } as FC);
     };
+
+    // Camera follow: fly in once, then re-centre on the plane every frame.
+    let flyIn: { t0: number; from: [number, number]; z0: number; z1: number } | null = null;
+    startFollow.current = () => {
+      const c = map.getCenter();
+      flyIn = { t0: performance.now(), from: [c.lng, c.lat], z0: map.getZoom(), z1: Math.min(13, Math.max(map.getZoom(), FOLLOW_ZOOM)) };
+    };
+    const following = () => live.current.follow && live.current.selectedId != null;
+    const moveCamera = (t: number) => {
+      if (!following() || !selectedPos) return;
+      const [lat, lon] = selectedPos;
+      const padding = freePadding(map);
+      if (flyIn) {
+        const k = easeInOut(Math.min(1, Math.max(0, (t - flyIn.t0) / FLY_IN_MS)));
+        let dLon = lon - flyIn.from[0];
+        if (dLon > 180) dLon -= 360; else if (dLon < -180) dLon += 360;
+        map.jumpTo({
+          center: [flyIn.from[0] + dLon * k, flyIn.from[1] + (lat - flyIn.from[1]) * k],
+          zoom: flyIn.z0 + (flyIn.z1 - flyIn.z0) * k,
+          padding,
+        });
+        if (k >= 1) flyIn = null;
+      } else {
+        map.jumpTo({ center: [lon, lat], padding });
+      }
+    };
+    // Grabbing the map means you want to look around: stop following.
+    map.on("dragstart", () => { flyIn = null; if (live.current.follow) live.current.onFollowChange(false); });
     redraw.current = () => { tickLocal(); tickWorld(); };
     // One animation loop. It pauses by itself when the tab is hidden.
     let frame = 0, lastLocal = 0, lastWorld = 0;
     const loop = (t: number) => {
-      if (t - lastLocal >= LOCAL_FRAME_MS) { lastLocal = t; tickLocal(); }
+      // While following, redraw every frame so the plane and camera move together.
+      if (following() || t - lastLocal >= LOCAL_FRAME_MS) { lastLocal = t; tickLocal(); }
       if (t - lastWorld >= WORLD_FRAME_MS) { lastWorld = t; tickWorld(); }
+      moveCamera(t);
       frame = requestAnimationFrame(loop);
     };
     frame = requestAnimationFrame(loop);
 
     // Report the visible area so the server sends worldwide aircraft for it.
     // Debounced: a pan fires many events; the server only needs the final view.
+    // Following moves the map every frame, so also report at least every 1.5 s.
     let viewTimer: number | undefined;
+    let lastReport = 0;
     function reportView() {
       window.clearTimeout(viewTimer);
-      viewTimer = window.setTimeout(() => {
-        live.current.onViewChange?.(visibleBox(map));
-      }, 300);
+      const send = () => { lastReport = performance.now(); live.current.onViewChange?.(visibleBox(map)); };
+      if (performance.now() - lastReport > VIEW_REPORT_MAX_MS) send();
+      else viewTimer = window.setTimeout(send, 300);
     }
     map.on("moveend", reportView);
 
@@ -321,6 +397,11 @@ export default function MapView(props: Props) {
   useEffect(() => {
     if (ready.current) redraw.current?.();
   }, [props.aircraft, props.world, props.selectedId, props.dimmed, props.trail]);
+
+  // Clicking a plane (or turning follow back on) flies the camera to it.
+  useEffect(() => {
+    if (props.follow && props.selectedId) startFollow.current?.();
+  }, [props.selectedId, props.follow]);
 
   return <div ref={divRef} className="map" />;
 }

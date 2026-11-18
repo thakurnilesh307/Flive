@@ -1,16 +1,18 @@
 import type { Derived } from "../status";
 import { badgeHue, categoryLabel, operatorFor } from "../airlines";
 import { flightLabel, fmtAgo, fmtAlt, fmtDist, fmtHeading, fmtSpeed, fmtVs } from "../format";
-import { CloseIcon, PlaneGlyph, RunwayIcon } from "./icons";
+import { CloseIcon, LocateIcon, PlaneGlyph, RunwayIcon } from "./icons";
 import StatusPill from "./StatusPill";
 
 interface Props {
   d: Derived;
   serverNow: number;
+  following: boolean;
+  onToggleFollow: () => void;
   onClose: () => void;
 }
 
-export default function DetailPanel({ d, serverNow, onClose }: Props) {
+export default function DetailPanel({ d, serverNow, following, onToggleFollow, onClose }: Props) {
   const a = d.a;
   const op = operatorFor(a.callsign, a.registration);
   const category = categoryLabel(a.category);
@@ -26,6 +28,15 @@ export default function DetailPanel({ d, serverNow, onClose }: Props) {
           <h2>{flightLabel(d)}</h2>
           <p>{op.name}</p>
         </div>
+        <button
+          className={`icon-btn ghost follow-btn ${following ? "on" : ""}`}
+          onClick={onToggleFollow}
+          aria-pressed={following}
+          aria-label={following ? "Stop following this plane" : "Follow this plane"}
+          title={following ? "Following (drag the map to stop)" : "Follow this plane"}
+        >
+          <LocateIcon size={19} />
+        </button>
         <button className="icon-btn ghost" onClick={onClose} aria-label="Close details">
           <CloseIcon size={20} />
         </button>
