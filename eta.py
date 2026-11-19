@@ -130,6 +130,10 @@ class LivePredictor:
         self.runways, err = _load(models / f"{icao}_runway.joblib")
         if err:
             print(f"{icao} runway {err}")
+        # "Is it landing here?" classifier (arrival_model.py); without it, the hand-written rule.
+        self.arrival, err = _load(models / f"{icao}_arrival.joblib")
+        if err:
+            print(f"{icao} arrival {err}")
         self.tracks = defaultdict(deque)
         self.events = []             # recent detected landings AND takeoffs (dicts from events.detect)
         self.last_detect = 0.0
@@ -149,6 +153,8 @@ class LivePredictor:
                 "straight_line_mae_min": b.get("straight_mae_min"),
                 "runway_in_use": cfg, "landings_last_30min": n,
                 "runway_model": self.runways is not None,
+                "arrival_model": self.arrival is not None,
+                "arrival_report": (self.arrival or {}).get("report", {}).get("model"),
                 "runway_accuracy": {k: v.get("model_accuracy") for k, v in rr.items()}}
 
     # ---- live state -----------------------------------------------------------------
@@ -220,17 +226,18 @@ class LivePredictor:
         for a in snapshot["aircraft"]:
             a["landing_at"] = a["landing_lo_at"] = a["landing_hi_at"] = None
             a["landing_runway"] = a["landing_runway_p"] = a["takeoff_runway"] = a["takeoff_runway_p"] = None
-        self._predict_runways(snapshot, samples, now)
-        if not self.available:
-            return snapshot
         cfg, n_landings = self.runway_in_use(now)
-        snapshot["runway_in_use"] = cfg
         # Arrival-flow traffic right now (same definition as dataset.TrafficIndex).
         flow = {i for i, s in samples.items() if dataset.in_flow(self.ap, s)}
+        arriving = self._arrivals(snapshot, samples, now, cfg, n_landings, flow)
+        self._predict_runways(snapshot, samples, now, arriving)
+        if not self.available:
+            return snapshot
+        snapshot["runway_in_use"] = cfg
         rows, targets = [], []
         for a in snapshot["aircraft"]:
             s = samples.get(a.get("icao24"))
-            if not s or not self._arriving(a, s):
+            if not s or a.get("icao24") not in arriving:
                 continue
             rows.append(dataset.feature_row(self.ap, s, now, len(flow - {a["icao24"]}), cfg, n_landings))
             targets.append((a, s))
@@ -253,7 +260,37 @@ class LivePredictor:
             a["landing_hi_at"] = round(s.t + h, 1)
         return snapshot
 
+    def _arrivals(self, snapshot, samples, now, cfg, n_landings, flow):
+        """icao24s of planes landing here: the classifier when there is one, else the rule."""
+        out = set()
+        if self.arrival is None:
+            for a in snapshot["aircraft"]:
+                s = samples.get(a.get("icao24"))
+                if s and self._arriving(a, s):
+                    out.add(a["icao24"])
+            return out
+        import arrival_model as AM
+        import pandas as pd
+        rows, ids = [], []
+        for a in snapshot["aircraft"]:
+            icao, s = a.get("icao24"), samples.get(a.get("icao24"))
+            if not s:
+                continue
+            track = self.tracks.get(icao, ())
+            recent = any(x.on_ground for x in track if x.t >= s.t - AM.RECENT_GROUND_S)
+            if not AM.candidate(self.ap, s, recent):
+                continue
+            past = AM._past([x for x in track if x.t >= s.t - 240], s.t)
+            rows.append(AM.features(self.ap, s, past, now, len(flow - {icao}), cfg, n_landings))
+            ids.append(icao)
+        if rows:
+            X = pd.DataFrame(rows).reindex(columns=self.arrival["features"]).astype(float)
+            p = self.arrival["model"].predict_proba(X)[:, 1]
+            out = {i for i, q in zip(ids, p) if q >= self.arrival["threshold"]}
+        return out
+
     def _arriving(self, a, s):
+        """The hand-written rule (used when there's no arrival classifier)."""
         if not dataset.usable(self.ap, s):
             return False
         d = self.ap.dist_nm(s.lat, s.lon)
@@ -263,7 +300,7 @@ class LivePredictor:
                 and not landing_elsewhere(self.ap, s))
 
     # ---- runways ----------------------------------------------------------------------
-    def _predict_runways(self, snapshot, samples, now):
+    def _predict_runways(self, snapshot, samples, now, arriving):
         """Landing runway for arrivals, takeoff runway for planes taxiing out, each with
         the model's probability (only runways used in the last 30 min can win, the same
         rule train_runway.py was scored with)."""
@@ -281,7 +318,7 @@ class LivePredictor:
             if not s:
                 continue
             if dataset.usable(self.ap, s):
-                if self._arriving(a, s):
+                if a["icao24"] in arriving:
                     arr.append((a, dataset.arrival_runway_features(self.ap, s, now, len(flow - {a["icao24"]}), use)))
             elif dataset.taxiing(self.ap, s) and a["icao24"] not in just_landed:
                 dep.append((a, dataset.departure_runway_features(self.ap, s, now, use)))
