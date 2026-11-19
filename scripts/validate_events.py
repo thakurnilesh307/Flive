@@ -1,4 +1,7 @@
-"""Check events.py's detected landings against OpenSky's arrival records for KBOS.
+"""Check events.py's detected landings against OpenSky's arrival records for an airport.
+
+    python scripts/validate_events.py [KBOS|KJFK|EGLL]
+
 
     python scripts/validate_events.py
 
@@ -6,7 +9,7 @@ OpenSky builds per-flight records overnight (/flights/arrival, previous days onl
 separate credit bucket from the live states). We only compare inside the time
 windows our logs actually cover, with a margin so the whole approach was visible:
 
-- recall:    of OpenSky's KBOS arrivals in covered windows, how many did we detect?
+- recall:    of OpenSky's arrivals in covered windows, how many did we detect?
 - precision: of our detected landings in those windows, how many does OpenSky have?
 
 A match is the same icao24 within 20 minutes. OpenSky's records are estimates too
@@ -26,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 load_dotenv(ROOT / ".env")
 
+import airport_geo  # noqa: E402
 import events  # noqa: E402
 import opensky_auth  # noqa: E402
 
@@ -35,12 +39,12 @@ EDGE_S = 15 * 60          # ignore arrivals right at the edges of a covered wind
 MAX_QUERY_S = 86400       # OpenSky: a query may touch at most 2 UTC days
 
 
-def fetch_arrivals(begin, end):
+def fetch_arrivals(icao, begin, end):
     out = []
     t = begin
     while t < end:
         stop = min(end, t + MAX_QUERY_S)
-        r = requests.get(URL, params={"airport": "KBOS", "begin": int(t), "end": int(stop)},
+        r = requests.get(URL, params={"airport": icao, "begin": int(t), "end": int(stop)},
                          headers=opensky_auth.auth_headers(), timeout=60)
         if r.status_code == 404:      # OpenSky: no flights in this interval
             pass
@@ -53,8 +57,9 @@ def fetch_arrivals(begin, end):
 
 
 def main():
-    tracks, covered, _, _, _ = events.load_all()   # live logs + imported adsb.lol history
-    detected, _ = events.detect(tracks, covered)
+    ap = airport_geo.get(sys.argv[1] if len(sys.argv) > 1 else "KBOS")
+    tracks, covered, _, _, _ = events.load_all(ap)   # live logs + imported adsb.lol history
+    detected, _ = events.detect(tracks, covered, ap)
     landings = [e for e in detected if e["kind"] == "landing"]
     windows = [(s + EDGE_S, e - 120) for s, e in covered if e - s > EDGE_S + 600]
 
@@ -69,7 +74,7 @@ def main():
 
     print(f"Covered windows before today: {len(windows)}, "
           f"{sum(e - s for s, e in windows) / 3600:.1f} h")
-    arrivals = fetch_arrivals(windows[0][0] - 3600, windows[-1][1] + 3600)
+    arrivals = fetch_arrivals(ap.icao, windows[0][0] - 3600, windows[-1][1] + 3600)
     sky = [a for a in arrivals if a.get("lastSeen") and inside(a["lastSeen"])]
     ours = [e for e in landings if inside(e["time"])]
 
@@ -87,7 +92,7 @@ def main():
     found = [a for a in sky if match(a["lastSeen"], a["icao24"], our_pool)]
     confirmed = [e for e in ours if match(e["time"], e["icao24"], sky_pool)]
 
-    print(f"OpenSky KBOS arrivals in those windows: {len(sky)}")
+    print(f"OpenSky {ap.icao} arrivals in those windows: {len(sky)}")
     print(f"Our detected landings in those windows:  {len(ours)}")
     if sky:
         print(f"Recall:    {len(found)}/{len(sky)} = {100 * len(found) / len(sky):.0f}% of OpenSky's arrivals detected")

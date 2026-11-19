@@ -1,5 +1,6 @@
 """
-Live aircraft around KBOS from a readsb-style ADS-B API (adsb.fi by default).
+Live aircraft around an airport (KBOS unless told otherwise) from a readsb-style
+ADS-B API (adsb.fi by default).
 
 adsb.fi, adsb.lol and similar aggregators all serve readsb's JSON format, so one
 converter covers them. Switch providers with env vars (see .env.example):
@@ -12,15 +13,17 @@ names, see CLAUDE.md) or raises RateLimited when the provider says slow down.
 """
 import os
 import re
+import threading
 import time
 
 import requests
 
 KBOS_LAT, KBOS_LON = 42.3656, -71.0096
 RADIUS_NM = 40
+MIN_GAP_S = 1.2     # adsb.fi allows 1 request/s per IP: keep every poller (Logan + others) under it
 
 DEFAULT_URL = "https://opendata.adsb.fi/api/v3/lat/{lat}/lon/{lon}/dist/{nm}"
-USER_AGENT = "Flive/0.1 (Boston Logan live tracker; +https://github.com/thakurnilesh307/Flive)"
+USER_AGENT = "Flive/0.1 (live airport traffic tracker; +https://github.com/thakurnilesh307/Flive)"
 
 FT_TO_M = 0.3048
 KT_TO_MS = 0.514444
@@ -37,9 +40,23 @@ class RateLimited(Exception):
         self.retry_after = retry_after
 
 
-def _url():
+def _url(lat, lon, nm):
     template = os.getenv("ADSB_URL") or DEFAULT_URL
-    return template.format(lat=KBOS_LAT, lon=KBOS_LON, nm=RADIUS_NM)
+    return template.format(lat=lat, lon=lon, nm=nm)
+
+
+_gap_lock = threading.Lock()
+_last_request = 0.0
+
+
+def _throttle():
+    """Space requests from all pollers at least MIN_GAP_S apart (they run in threads)."""
+    global _last_request
+    with _gap_lock:
+        wait = _last_request + MIN_GAP_S - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        _last_request = time.monotonic()
 
 
 # --- field conversion -------------------------------------------------------
@@ -119,12 +136,13 @@ def convert(ac, api_time):
 
 # --- polling ----------------------------------------------------------------
 
-def poll_once():
+def poll_once(lat=KBOS_LAT, lon=KBOS_LON, nm=RADIUS_NM):
     headers = {}
     key = os.getenv("ADSB_API_KEY")
     if key:
         headers["x-api-key"] = key
-    r = _session.get(_url(), headers=headers, timeout=10)
+    _throttle()
+    r = _session.get(_url(lat, lon, nm), headers=headers, timeout=10)
     if r.status_code == 429:
         retry = r.headers.get("Retry-After")
         raise RateLimited(int(retry) if retry and retry.isdigit() else None)

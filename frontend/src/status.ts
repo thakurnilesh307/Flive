@@ -1,4 +1,4 @@
-import type { Aircraft } from "./types";
+import type { Aircraft, LatLon } from "./types";
 import { KBOS, M_TO_FT, MS_TO_FPM, MS_TO_KT, angleDiff, bearingDeg, distanceNm } from "./geo";
 
 export type FlightStatus = "approach" | "inbound" | "departing" | "enroute" | "taxiing" | "ground"
@@ -31,11 +31,11 @@ export interface Derived {
  * placeholder until real arrival/departure detection (roadmap step 4): it can
  * be fooled by traffic for nearby airports (Hanscom, Norwood, Beverly).
  */
-function classify(a: Aircraft, dist: number | null, alt: number | null, gs: number | null, vs: number | null): FlightStatus {
+function classify(a: Aircraft, dist: number | null, alt: number | null, gs: number | null, vs: number | null, ref: LatLon): FlightStatus {
   if (a.on_ground) return gs != null && gs > 5 ? "taxiing" : "ground";
   if (dist == null) return "enroute";
 
-  const brgToBos = a.lat != null && a.lon != null ? bearingDeg([a.lat, a.lon], KBOS) : null;
+  const brgToBos = a.lat != null && a.lon != null ? bearingDeg([a.lat, a.lon], ref) : null;
   const off = a.track_deg != null && brgToBos != null ? angleDiff(a.track_deg, brgToBos) : null;
   const toward = off != null && off < 45;
   const away = off != null && off > 120;
@@ -59,14 +59,15 @@ function motionStatus(a: Aircraft, gs: number | null, vs: number | null): Flight
   return "cruising";
 }
 
-export function derive(a: Aircraft): Derived {
-  const distNm = a.lat != null && a.lon != null ? distanceNm([a.lat, a.lon], KBOS) : null;
+/** Status relative to an airport: Logan by default, or the airport whose feed the plane came from. */
+export function derive(a: Aircraft, ref: LatLon = KBOS): Derived {
+  const distNm = a.lat != null && a.lon != null ? distanceNm([a.lat, a.lon], ref) : null;
   // Prefer the altitude corrected for local air pressure (server, nearest METAR station).
   const altM = a.alt_qnh_m ?? a.baro_alt_m;
   const altFt = a.on_ground || altM == null ? null : altM * M_TO_FT;
   const gsKt = a.velocity_ms == null ? null : a.velocity_ms * MS_TO_KT;
   const vsFpm = a.vert_rate_ms == null ? null : a.vert_rate_ms * MS_TO_FPM;
-  return { a, distNm, altFt, gsKt, vsFpm, status: classify(a, distNm, altFt, gsKt, vsFpm) };
+  return { a, distNm, altFt, gsKt, vsFpm, status: classify(a, distNm, altFt, gsKt, vsFpm, ref) };
 }
 
 export function deriveWorld(a: Aircraft): Derived {

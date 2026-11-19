@@ -23,10 +23,15 @@ export interface Aircraft {
   operator_icao?: string | null;
   /** altitude corrected for local air pressure from the nearest METAR (see weather.py) */
   alt_qnh_m?: number | null;
-  /** predicted touchdown at Logan (unix s) from the landing-time model, plus the likely range */
+  /** set by the page: which airport feed this came from (KBOS = the main Boston feed) */
+  airport?: string;
+  /** predicted touchdown (unix s) at that airport from the landing-time model, plus the likely range */
   landing_at?: number | null;
   landing_lo_at?: number | null;
   landing_hi_at?: number | null;
+  /** worldwide planes: "global" when the rough global model made the prediction, and for which airport */
+  prediction?: "global" | null;
+  landing_airport?: string | null;
   /** predicted runway (runway models) and the model's probability, 0-1 */
   landing_runway?: string | null;
   landing_runway_p?: number | null;
@@ -49,6 +54,17 @@ export interface WorldView {
   apiTime: number | null;
   nextUpdateS: number;
   totalInView: number;
+  aircraft: Aircraft[];
+}
+
+/** Another prediction airport's own 10 s feed (JFK, Heathrow), sent while it's in view. */
+export interface AirportFeed {
+  icao: string;
+  name: string;
+  pos: LatLon;
+  apiTime: number;
+  receivedAt: number;
+  runwayInUse: string | null;
   aircraft: Aircraft[];
 }
 

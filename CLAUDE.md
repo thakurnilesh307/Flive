@@ -103,8 +103,41 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
 - `opensky_auth.py` - shared OpenSky OAuth2 token handling (thread-safe).
 - `poll_logan.py` - old OpenSky state-vector logger. Retired for live data; its
   OAuth2 token code is reusable for the OpenSky flights endpoints.
+- `airport_geo.py` - the PREDICTION AIRPORTS (`CONFIG`: KBOS "Logan", KJFK
+  "JFK", EGLL "Heathrow"; name, ref point, time zone, live log prefix) with
+  runway ends from `data/runways.csv` (OurAirports, committed, built by
+  `scripts/build_runways.py`), field elevation, `xy`/`dist_nm`/`bearing`,
+  `match_runway`. Every offline/ML script takes the ICAO as argv[1] (default
+  KBOS); nothing else may hardcode Logan geometry. Adding an airport = CONFIG
+  entry, build_runways, import history, dataset + train_eta + train_runway.
+- Other prediction airports live: `server.airport_poller` polls adsb.fi around
+  each (40 nm, every 10 s, staggered; `adsb_feed._throttle` keeps ALL adsb.fi
+  requests >= 1.2 s apart), runs its own `eta.LivePredictor(icao)`, logs to
+  `{prefix}_*.jsonl` (kjfk_, egll_) and only starts when that airport has a
+  model. `PREDICT_AIRPORTS` env picks which. /ws: pages whose padded view
+  overlaps an airport's area get `{"type":"airport", icao, name, lat, lon,
+  ...snapshot}` (full aircraft dicts with predictions) immediately and every
+  10 s; those aircraft are removed from that page's world rows. The frontend
+  tags them `airport: icao`, derives statuses relative to that airport, and
+  shows "<name> arrivals/departures" tabs when the map centre is within 80 nm
+  (zoom >= 7). Non-Logan arrivals lists use model predictions only (the
+  inbound heuristic catches LGA/EWR/Gatwick traffic).
+- `eta.landing_elsewhere()` gates live arrivals at every detailed airport
+  (lined up for / low near another airport, low and not lined up here): keeps
+  LGW/LCY/LGA/EWR traffic out of Heathrow/JFK predictions.
+- `global_model.py` - rough tier for the world feed: one landing-time model on
+  airport-relative features from a single position (no runway in use), trained
+  on every airport inside the history areas (neighbours detected too), scored
+  leave-one-AREA-out; destination = simple rule `guess_destination` unless the
+  classifier beats it on unseen areas (bundle `dest` None = rule). Server runs
+  `GlobalPredictor` after each world poll; world compact rows carry
+  landing_at/lo/hi, landing_airport, landing_runway (lined-up rule); page shows
+  them as "rough estimate". Bundle `data/models/GLOBAL_eta.joblib`.
+  `data/runways.csv` covers every airport in airports.csv (+ CONFIG).
+- `scripts/overnight.sh START END` - unattended: import days, retrain all,
+  validate; log in `data/overnight.log`.
 - `events.py` - step 4 (done, offline): logs -> landing/takeoff events with
-  runway (`data/events.csv`, gitignored). Despike ground flags (airborne blips
+  runway (`data/events_ICAO.csv`, gitignored). Despike ground flags (airborne blips
   first), confirm 60 s, runway by heading <= 25 deg AND <= 0.35 nm from the
   extended centreline (RUNWAYS_RAW from OurAirports), "lost on final" inferred
   landings for aircraft with no ground flag. `scripts/validate_events.py` scores
@@ -112,14 +145,14 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   touch at most 2 day partitions). Last check: 97% recall, 100% precision.
 - `scripts/import_history.py` - past days from adsb.lol globe_history releases
   (ODbL, ~3.5 GB/day worldwide, split .tar.aa/.ab): streamed, never stored,
-  keeps points within 45 nm of KBOS -> `data/history/YYYY-MM-DD.jsonl.gz`
-  (gitignored). Trace point: [dt, lat, lon, alt_ft|"ground", gs, track, flags,
+  keeps points within 45 nm of each prediction airport in one pass ->
+  `data/history/ICAO/YYYY-MM-DD.jsonl.gz` (gitignored); per-airport skip if done. Trace point: [dt, lat, lon, alt_ft|"ground", gs, track, flags,
   vrate, ac{flight,category}, ...]. `events.load_all()` merges logs + history.
   History altitudes are raw pressure altitude (no historical QNH yet).
 - `dataset.py` / `train_eta.py` / `eta.py` - step 5 landing-time model.
   `feature_row()` is THE feature function for training and live (never fork
   it). Raw pressure altitude everywhere for the model (history has no QNH).
-  Model bundle `data/eta_model.joblib` (gitignored): model + 10/90 quantile
+  Model bundles per airport in `data/models/ICAO_eta.joblib` (gitignored): model + 10/90 quantile
   models + `range_widen` calibrated on held-out days. Live: arrivals only
   (`is_arrival`: not climbing, not on ground in last 5 min, not helicopters),
   adds `landing_at`, `landing_lo_at`, `landing_hi_at` (unix s) to Boston
@@ -130,7 +163,9 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   departure: takeoff runway while taxiing), features from
   `dataset.arrival_runway_features` / `departure_runway_features` (shared with
   live), `restrict_to_active` = only runways used in the last 30 min (training
-  eval and live). Bundle `data/runway_model.joblib`. Live fields:
+  eval and live). Bundle `data/models/ICAO_runway.joblib`. Runway feature
+  columns exist for every runway end at the airport; constant ones are dropped
+  at training and live selects the bundle's feature list. Live fields:
   `landing_runway(_p)`, `takeoff_runway(_p)`; taxiing = `dataset.taxiing()` and
   not landed in the last 20 min. Last: 94.6% / 91.4% vs 88.9% / 88.4% baseline.
 - `explore.py` - (planned) pandas/matplotlib analysis of the JSONL logs.

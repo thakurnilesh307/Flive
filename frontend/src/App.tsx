@@ -5,6 +5,9 @@ import { derive, deriveWorld, isArriving, type Derived } from "./status";
 import { operatorFor } from "./airlines";
 import { KBOS, distanceNm } from "./geo";
 import type { BBox, LatLon } from "./types";
+
+/** The airport the Logan-style tabs and stats are about right now. */
+interface Focus { icao: string; name: string; pos: LatLon }
 import { nearest, searchAirports, useAirports, type Airport } from "./airports";
 import { applyTheme, initialTheme, type Theme } from "./theme";
 import MapView from "./components/MapView";
@@ -19,8 +22,8 @@ import { LocateIcon, MinusIcon, PlusIcon } from "./components/icons";
 const LIVE_MAX_AGE_S = 30;
 const MAX_SEARCH_ROWS = 100;
 const MAX_VIEW_ROWS = 100;
-const NEAR_BOSTON_NM = 80;   // map centre within this of Logan (and zoomed in) = "over Boston"
-const NEAR_BOSTON_ZOOM = 7;
+const NEAR_AIRPORT_NM = 80;   // map centre within this of a prediction airport (and zoomed in) = "over" it
+const NEAR_AIRPORT_ZOOM = 7;
 
 /** Is a lon/lat inside a box whose east edge may be past 180 (unwrapped)? */
 function inBox(lat: number, lon: number, [w, s, e, n]: BBox): boolean {
@@ -38,7 +41,7 @@ function matches(d: Derived, q: string): boolean {
 }
 
 export default function App() {
-  const { snapshot, connected, clockSkew, trails, world, sendView, keepAircraft } = useLiveFeed();
+  const { snapshot, connected, clockSkew, trails, world, sendView, keepAircraft, airportFeeds } = useLiveFeed();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [follow, setFollow] = useState(true);
   const [theme, setTheme] = useState<Theme>(initialTheme);
@@ -62,7 +65,16 @@ export default function App() {
     return () => window.clearInterval(t);
   }, []);
 
-  const derived = useMemo(() => (snapshot?.aircraft ?? []).map(derive).sort(byDistance), [snapshot]);
+  // Boston feed + other prediction airports' feeds (JFK, Heathrow): drawn at full rate, with
+  // statuses relative to their own airport. The server leaves these out of the world rows.
+  const derived = useMemo(() => {
+    const out = (snapshot?.aircraft ?? []).map((a) => derive({ ...a, airport: "KBOS" }));
+    const seen = new Set(out.map((d) => d.a.icao24));
+    for (const f of airportFeeds) {
+      for (const a of f.aircraft) if (!seen.has(a.icao24)) { seen.add(a.icao24); out.push(derive(a, f.pos)); }
+    }
+    return out.sort(byDistance);
+  }, [snapshot, airportFeeds]);
   // Worldwide aircraft in view (server already removed the ones the Boston feed covers).
   const worldDerived = useMemo(() => (world?.aircraft ?? []).map(deriveWorld), [world]);
   const selected = derived.find((d) => d.a.icao24 === selectedId)
@@ -83,7 +95,7 @@ export default function App() {
   }, []);
   // Airport under the middle of the map, shown in the top bar (replaces the old fixed "KBOS").
   const place = useMemo(() => {
-    if (!airportsReady || view.zoom < NEAR_BOSTON_ZOOM) return null;
+    if (!airportsReady || view.zoom < NEAR_AIRPORT_ZOOM) return null;
     const hit = nearest(view.center);
     return hit && hit.dist < 40 ? { code: hit.a.code, name: hit.a.name } : null;
   }, [airportsReady, view]);
@@ -97,8 +109,17 @@ export default function App() {
     return new Set([...derived, ...worldDerived].map((d) => d.a.icao24).filter((id) => !hit.has(id)));
   }, [derived, worldDerived, searchHits]);
 
-  // Logan tabs and stats only when the map is actually over Boston.
-  const nearBoston = view.zoom >= NEAR_BOSTON_ZOOM && distanceNm(view.center, KBOS) < NEAR_BOSTON_NM;
+  // Arrival/departure tabs and stats only when the map is over an airport Flive predicts for.
+  const focus = useMemo<Focus | null>(() => {
+    if (view.zoom < NEAR_AIRPORT_ZOOM) return null;
+    const options: Focus[] = [{ icao: "KBOS", name: "Logan", pos: KBOS }, ...airportFeeds.map((f) => ({ icao: f.icao, name: f.name, pos: f.pos }))];
+    const best = options
+      .map((o) => ({ o, d: distanceNm(view.center, o.pos) }))
+      .filter((x) => x.d < NEAR_AIRPORT_NM)
+      .sort((x, y) => x.d - y.d)[0];
+    return best?.o ?? null;
+  }, [view, airportFeeds]);
+  const focusDerived = useMemo(() => (focus ? derived.filter((d) => d.a.airport === focus.icao) : []), [derived, focus]);
 
   // "In view": every plane inside the map view (Boston feed + worldwide), nearest to the centre first.
   const inView = useMemo(() => {
@@ -113,25 +134,26 @@ export default function App() {
   const inViewTotal = world ? bostonInView + world.totalInView : inView.length;
 
   const lists = useMemo(() => ({
-    // Arrivals: the model's predicted landings first (soonest first), then other inbound planes.
-    arrivals: derived
-      .filter((d) => isArriving(d.status) || d.a.landing_at != null)
+    // Arrivals: the model's predicted landings first (soonest first), then (Logan only) other
+    // inbound planes. Around JFK/Heathrow "inbound" would also catch LaGuardia/Gatwick traffic.
+    arrivals: focusDerived
+      .filter((d) => d.a.landing_at != null || (focus?.icao === "KBOS" && isArriving(d.status)))
       .sort((x, y) => (x.a.landing_at ?? Infinity) - (y.a.landing_at ?? Infinity)),
     // Departures: planes taxiing out (with a predicted runway), then ones that just took off.
-    departures: derived
+    departures: focusDerived
       .filter((d) => d.status === "departing" || d.a.takeoff_runway != null)
       .sort((x, y) => Number(x.status === "departing") - Number(y.status === "departing")),
     inview: inView.slice(0, MAX_VIEW_ROWS),
-  }), [derived, inView]);
+  }), [focusDerived, focus, inView]);
   const counts = { arrivals: lists.arrivals.length, departures: lists.departures.length, inview: inViewTotal };
-  const activeTab: Tab = nearBoston ? tab : "inview";
+  const activeTab: Tab = focus ? tab : "inview";
   const tableNote = activeTab === "inview"
     ? (inViewTotal > MAX_VIEW_ROWS ? `Nearest ${MAX_VIEW_ROWS} to the map centre` : "Nearest to the map centre first")
     : activeTab === "arrivals"
       ? "Sorted by predicted landing time · runway and time are my model's guesses"
       : activeTab === "departures"
       ? "Taxiing out (with predicted runway), then just departed"
-      : "Logan statuses are my best guess from position and speed";
+      : "Statuses are my best guess from position and speed";
 
   // Selecting a plane always (re)starts following it; MapView flies the camera there.
   const select = useCallback((id: string | null) => {
@@ -188,9 +210,9 @@ export default function App() {
 
       <StatsCard
         inView={inViewTotal}
-        nearBoston={nearBoston}
+        airportName={focus?.name ?? null}
         inbound={lists.arrivals.length}
-        approach={derived.filter((d) => d.status === "approach").length}
+        approach={focusDerived.filter((d) => d.status === "approach" && (focus?.icao === "KBOS" || d.a.landing_at != null)).length}
         worldEveryS={world?.nextUpdateS ?? 90}
       />
 
@@ -204,7 +226,7 @@ export default function App() {
         </button>
       </div>
 
-      {showDetail && selected && <DetailPanel d={selected} serverNow={serverNow} following={follow} onToggleFollow={() => setFollow((f) => !f)} onClose={() => setSelectedId(null)} />}
+      {showDetail && selected && <DetailPanel d={selected} airportName={selected.a.airport === "KBOS" ? "Logan" : airportFeeds.find((f) => f.icao === selected.a.airport)?.name ?? null} serverNow={serverNow} following={follow} onToggleFollow={() => setFollow((f) => !f)} onClose={() => setSelectedId(null)} />}
       {chatOpen && (
         <ChatPanel messages={chat} setMessages={setChat} suggestions={suggestions} onClose={() => setChatOpen(false)} />
       )}
@@ -212,7 +234,8 @@ export default function App() {
       <FlightTable
         tab={activeTab}
         onTab={setTab}
-        tabs={nearBoston ? ["arrivals", "departures", "inview"] : ["inview"]}
+        tabs={focus ? ["arrivals", "departures", "inview"] : ["inview"]}
+        airportName={focus?.name ?? null}
         counts={counts}
         note={tableNote}
         rows={searchHits ? searchHits.slice(0, MAX_SEARCH_ROWS) : lists[activeTab]}

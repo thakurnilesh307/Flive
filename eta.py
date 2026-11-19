@@ -1,17 +1,19 @@
-"""Live landing-time predictions for Logan (roadmap step 5, live part).
+"""Live landing-time and runway predictions (roadmap step 5, live part), one
+LivePredictor per airport in airport_geo.CONFIG.
 
-The server feeds every Boston snapshot (5 s) into LivePredictor.update(). It:
+The server feeds every snapshot for that airport (Logan every 5 s, the others every
+10 s) into LivePredictor.update(). It:
 1. keeps the last 40 minutes of every aircraft's track in memory,
 2. runs the same landing detector as training (events.detect) every 30 s, so it
-   knows which runway Logan has been landing on (an input to the model),
-3. picks the aircraft that look like Logan arrivals, builds their inputs with
+   knows which runway the airport has been landing on (an input to the model),
+3. picks the aircraft that look like arrivals there, builds their inputs with
    dataset.feature_row (the exact function training used), and asks the model
    trained by train_eta.py for a best guess plus a "likely" 10th-90th percentile range,
 4. adds absolute times to each aircraft dict: landing_at, landing_lo_at, landing_hi_at.
 
-The model only ever saw planes that DID land at Logan, so predictions are only made
-for aircraft that look like arrivals (see is_arrival); anything else gets None.
-On startup it replays the newest log file so the runway-in-use is known right away.
+The model only ever saw planes that DID land at that airport, so predictions are only
+made for aircraft that look like arrivals (see is_arrival); anything else gets None.
+On startup it replays recent logs so the runway-in-use is known right away.
 """
 import glob
 import json
@@ -19,28 +21,27 @@ import time
 from collections import defaultdict, deque
 from pathlib import Path
 
+import airport_geo as G
 import dataset
 import events as E
 import traffic
 
 HERE = Path(__file__).resolve().parent
-MODEL_PATH = HERE / "data" / "eta_model.joblib"
-RUNWAY_MODEL_PATH = HERE / "data" / "runway_model.joblib"   # train_runway.py
 TAXI_IN_S = 20 * 60          # a plane that landed this recently and is taxiing is taxiing IN
 KEEP_S = 40 * 60
 DETECT_EVERY_S = 30
 MAX_ETA_S = 35 * 60
 
 
-def is_arrival(s, status, recently_on_ground=False):
-    """Does this aircraft look like it's coming in to land at Logan?
+def is_arrival(ap, s, status, recently_on_ground=False):
+    """Does this aircraft look like it's coming in to land at airport `ap`?
     - never if it was on the ground in the last few minutes or is climbing: that's a
       departure (right at the airport every direction "points at Logan", so a plane
       that just lifted off can pass the approach rule; found by checking live
       predictions against real touchdowns),
-    - the existing Logan statuses "on approach" / "inbound", or
+    - the statuses "on approach" / "inbound" (traffic.classify relative to `ap`), or
     - below 10,000 ft within 30 nm and descending (catches planes on a downwind or
-      base leg that aren't pointed at Logan yet)."""
+      base leg that aren't pointed at the airport yet)."""
     if recently_on_ground or (s.vs_fpm is not None and s.vs_fpm > 300):
         return False
     if s.category == 8:   # helicopters use helipads, not the runways the model learned from
@@ -49,8 +50,42 @@ def is_arrival(s, status, recently_on_ground=False):
         return True
     if status == "departing" or s.alt_ft is None:
         return False
-    d = dataset.dist_nm(s.lat, s.lon)
+    d = ap.dist_nm(s.lat, s.lon)
     return d < 30 and s.alt_ft < 10000 and s.vs_fpm is not None and s.vs_fpm < -300
+
+
+_neighbours = None
+
+
+def landing_elsewhere(ap, s):
+    """Clearly landing at a different airport than `ap`? Around London and New York the
+    "descending within 30 nm" rule also catches Gatwick, City, LaGuardia and Newark
+    arrivals (found on the live Heathrow tab: an easyJet at 500 ft over Gatwick shown as
+    "lands at Heathrow in 10 min"). The models only learned from real arrivals, so this
+    only removes predictions that shouldn't exist:
+    - low (under 1,000 ft above the field) but more than 5 nm out and not lined up here,
+    - on final (within 8 nm) for another airport's runway and nearer to it, or
+    - under 2,500 ft within 6 nm of another airport."""
+    global _neighbours
+    import global_model
+    if s.alt_ft is None or global_model.lined_up(ap, s):   # on final here: it's ours
+        return False
+    d_here = ap.dist_nm(s.lat, s.lon)
+    if s.alt_ft - ap.elev_ft < 1000 and d_here > 5:   # 5 nm: JFK's curved Canarsie approach is low before it lines up
+        return True
+    if _neighbours is None:
+        _neighbours = global_model.AirportIndex(G.world_airports())
+    for x in _neighbours.near(s.lat, s.lon, 15):
+        if x.icao == ap.icao:
+            continue
+        # Lined up for x, close in, and nearer x than here (JFK and LaGuardia share runway
+        # headings, so far out a JFK arrival can sit on a LaGuardia centreline).
+        hit = global_model.aligned_runway(x, s) if global_model.lined_up(x, s) else None
+        if hit and hit[1] >= -8 and x.dist_nm(s.lat, s.lon) < d_here:
+            return True
+        if x.dist_nm(s.lat, s.lon) < 6 and s.alt_ft - x.elev_ft < 2500:
+            return True
+    return False
 
 
 def _sample(a):
@@ -74,23 +109,27 @@ def _sample(a):
     )
 
 
+def _load(path):
+    """(bundle or None, error or None)."""
+    if not path.exists():
+        return None, None
+    try:
+        import joblib
+        return joblib.load(path), None
+    except Exception as e:  # missing scikit-learn, or a model from another version
+        return None, f"model not loaded ({type(e).__name__}: {e})"
+
+
 class LivePredictor:
-    def __init__(self, path=MODEL_PATH):
-        self.bundle = None
-        self.error = None
-        try:
-            import joblib
-            self.bundle = joblib.load(path) if path.exists() else None
-            if self.bundle is None:
-                self.error = "no model yet: run dataset.py and train_eta.py"
-        except Exception as e:  # missing scikit-learn, or a model from another version
-            self.error = f"model not loaded ({type(e).__name__}: {e})"
-        self.runways = None
-        try:
-            import joblib
-            self.runways = joblib.load(RUNWAY_MODEL_PATH) if RUNWAY_MODEL_PATH.exists() else None
-        except Exception as e:
-            print(f"Runway model not loaded ({type(e).__name__}: {e})")
+    def __init__(self, icao="KBOS"):
+        self.ap = G.AIRPORTS[icao]
+        models = dataset.MODELS
+        self.bundle, self.error = _load(models / f"{icao}_eta.joblib")
+        if self.bundle is None and self.error is None:
+            self.error = f"no model yet: run dataset.py {icao} and train_eta.py {icao}"
+        self.runways, err = _load(models / f"{icao}_runway.joblib")
+        if err:
+            print(f"{icao} runway {err}")
         self.tracks = defaultdict(deque)
         self.events = []             # recent detected landings AND takeoffs (dicts from events.detect)
         self.last_detect = 0.0
@@ -104,8 +143,10 @@ class LivePredictor:
         b = self.bundle or {}
         cfg, n = self.runway_in_use(time.time())
         rr = (self.runways or {}).get("report", {})
-        return {"available": self.available, "error": self.error, "trained_rows": b.get("trained_rows"),
+        return {"airport": self.ap.icao, "name": self.ap.name,
+                "available": self.available, "error": self.error, "trained_rows": b.get("trained_rows"),
                 "trained_days": len(b.get("days", [])), "held_out_mae_min": b.get("mae_min"),
+                "straight_line_mae_min": b.get("straight_mae_min"),
                 "runway_in_use": cfg, "landings_last_30min": n,
                 "runway_model": self.runways is not None,
                 "runway_accuracy": {k: v.get("model_accuracy") for k, v in rr.items()}}
@@ -124,7 +165,7 @@ class LivePredictor:
         cutoff = time.time() - KEEP_S
         # Every log written to in the last 40 min (each server run starts a new file,
         # so "just the newest" would be the empty one this run just created).
-        paths = [p for p in sorted(glob.glob(str(HERE / "logan_*.jsonl"))) if Path(p).stat().st_mtime >= cutoff]
+        paths = [p for p in E.log_paths(self.ap) if Path(p).stat().st_mtime >= cutoff]
         for path in paths:
             self._replay(path, cutoff)
         self._detect(time.time(), force=True)
@@ -151,7 +192,7 @@ class LivePredictor:
         if not tracks:
             return
         start = min(v[0].t for v in tracks.values())
-        found, _ = E.detect(tracks, [(start, now)])
+        found, _ = E.detect(tracks, [(start, now)], self.ap)
         seen = {(e["icao24"], e["kind"], round(e["time"] / 60)) for e in self.events}
         for e in found:
             if (e["icao24"], e["kind"], round(e["time"] / 60)) not in seen:
@@ -185,20 +226,13 @@ class LivePredictor:
         cfg, n_landings = self.runway_in_use(now)
         snapshot["runway_in_use"] = cfg
         # Arrival-flow traffic right now (same definition as dataset.TrafficIndex).
-        flow = {i for i, s in samples.items() if not s.on_ground and s.alt_ft is not None
-                and s.alt_ft < 8000 and dataset.dist_nm(s.lat, s.lon) < 15}
+        flow = {i for i, s in samples.items() if dataset.in_flow(self.ap, s)}
         rows, targets = [], []
         for a in snapshot["aircraft"]:
             s = samples.get(a.get("icao24"))
-            if not s or not dataset.usable(s):
+            if not s or not self._arriving(a, s):
                 continue
-            d = dataset.dist_nm(s.lat, s.lon)
-            status = traffic.classify(a, d, s.alt_ft, s.gs_kt, s.vs_fpm)
-            recent = self.tracks.get(a["icao24"], ())
-            on_ground_lately = any(x.on_ground for x in recent if x.t >= s.t - 300)
-            if not is_arrival(s, status, on_ground_lately):
-                continue
-            rows.append(dataset.feature_row(s, now, len(flow - {a["icao24"]}), cfg, n_landings))
+            rows.append(dataset.feature_row(self.ap, s, now, len(flow - {a["icao24"]}), cfg, n_landings))
             targets.append((a, s))
         if not rows:
             return snapshot
@@ -219,6 +253,15 @@ class LivePredictor:
             a["landing_hi_at"] = round(s.t + h, 1)
         return snapshot
 
+    def _arriving(self, a, s):
+        if not dataset.usable(self.ap, s):
+            return False
+        d = self.ap.dist_nm(s.lat, s.lon)
+        status = traffic.classify(a, d, s.alt_ft, s.gs_kt, s.vs_fpm, ref=(self.ap.lat, self.ap.lon))
+        recent = self.tracks.get(a["icao24"], ())
+        return (is_arrival(self.ap, s, status, any(x.on_ground for x in recent if x.t >= s.t - 300))
+                and not landing_elsewhere(self.ap, s))
+
     # ---- runways ----------------------------------------------------------------------
     def _predict_runways(self, snapshot, samples, now):
         """Landing runway for arrivals, takeoff runway for planes taxiing out, each with
@@ -230,22 +273,18 @@ class LivePredictor:
         use = dataset.RunwayUse(self.events)
         land_active = set(use.counts("landing", now))
         take_active = set(use.counts("takeoff", now))
-        flow = {i for i, s in samples.items() if not s.on_ground and s.alt_ft is not None
-                and s.alt_ft < 8000 and dataset.dist_nm(s.lat, s.lon) < 15}
+        flow = {i for i, s in samples.items() if dataset.in_flow(self.ap, s)}
         just_landed = {e["icao24"] for e in self.events if e["kind"] == "landing" and e["time"] > now - TAXI_IN_S}
         arr, dep = [], []
         for a in snapshot["aircraft"]:
             s = samples.get(a.get("icao24"))
             if not s:
                 continue
-            if dataset.usable(s):
-                d = dataset.dist_nm(s.lat, s.lon)
-                status = traffic.classify(a, d, s.alt_ft, s.gs_kt, s.vs_fpm)
-                recent = self.tracks.get(a["icao24"], ())
-                if is_arrival(s, status, any(x.on_ground for x in recent if x.t >= s.t - 300)):
-                    arr.append((a, dataset.arrival_runway_features(s, now, len(flow - {a["icao24"]}), use)))
-            elif dataset.taxiing(s) and a["icao24"] not in just_landed:
-                dep.append((a, dataset.departure_runway_features(s, now, use)))
+            if dataset.usable(self.ap, s):
+                if self._arriving(a, s):
+                    arr.append((a, dataset.arrival_runway_features(self.ap, s, now, len(flow - {a["icao24"]}), use)))
+            elif dataset.taxiing(self.ap, s) and a["icao24"] not in just_landed:
+                dep.append((a, dataset.departure_runway_features(self.ap, s, now, use)))
         for items, model_key, active, field in ((arr, "arrival", land_active, "landing_runway"),
                                                 (dep, "departure", take_active, "takeoff_runway")):
             if not items:

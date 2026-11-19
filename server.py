@@ -6,11 +6,14 @@ Flive server: polls the ADS-B provider once, broadcasts to every connected brows
   python -m uvicorn server:app
   -> open http://127.0.0.1:8000
 
-Live data comes from adsb_feed.py (adsb.fi by default, see .env.example).
+Live data comes from adsb_feed.py (adsb.fi by default, see .env.example): Logan
+every 5 s, plus every other airport in airport_geo.CONFIG every 10 s for the
+landing-time and runway predictions there.
 The UI is the React app in frontend/, served from frontend/dist once built.
 """
 import asyncio
 import json
+import math
 import os
 import re
 import time
@@ -36,8 +39,12 @@ import photos  # noqa: E402
 import logos  # noqa: E402
 import weather  # noqa: E402
 import eta  # noqa: E402
+import airport_geo  # noqa: E402
+import global_model  # noqa: E402
 
 POLL_SECONDS = 5        # provider allows 1 req/s; 5s is plenty for a live map
+AIRPORT_POLL_SECONDS = 10   # other prediction airports (adsb_feed spaces all requests >= 1.2 s apart)
+AIRPORT_RADIUS_NM = 40
 LOG_SECONDS = 15        # log less often than we poll: keeps log files small
 MAX_BACKOFF = 300
 
@@ -57,6 +64,7 @@ class Client:
         self.ws = ws
         self.view = None              # (visible, padded) boxes once the page asks for world data
         self.keep = ()                # icao24s to always include (the page's selected plane)
+        self.airports = set()         # prediction airports (not Logan) inside the page's view
         self.lock = asyncio.Lock()
 
     async def send(self, text: str):
@@ -77,13 +85,15 @@ async def broadcast(snap):
             clients.discard(c)   # browser went away mid-send
 
 
-def world_message(view, keep=()):
+def world_message(view, keep=(), airports_in_view=()):
     """Compact world aircraft for a client view, minus aircraft the Boston feed covers.
     `view` is (visible_box, padded_box): rows come from the padded box, the
     count shown to the user from the visible one. `keep` ids are always added
     (the selected plane must not vanish when a zoomed-out view is thinned)."""
     visible, padded = view
     local = {a["icao24"] for a in (latest or {}).get("aircraft", [])}
+    for icao in airports_in_view:   # the page gets these from their own 10 s feed instead
+        local |= {a["icao24"] for a in (airport_latest.get(icao) or {}).get("aircraft", [])}
     rows, _ = world.query(*padded, limit=WORLD_VIEW_LIMIT + len(local))
     rows = [a for a in rows if a["icao24"] not in local][:WORLD_VIEW_LIMIT]
     have = {a["icao24"] for a in rows}
@@ -104,7 +114,7 @@ def world_message(view, keep=()):
 async def send_world(c: Client):
     if c.view and world.snapshot:
         try:
-            await c.send(world_message(c.view, c.keep))
+            await c.send(world_message(c.view, c.keep, c.airports))
         except Exception:
             clients.discard(c)
 
@@ -119,7 +129,34 @@ def backoff(failures):
     return min(MAX_BACKOFF, POLL_SECONDS * 2 ** failures)
 
 
-predictor = eta.LivePredictor()      # landing-time model (train_eta.py); no-op if not trained
+# One landing-time + runway predictor per airport (train_eta.py / train_runway.py); no-op if not trained.
+predictors = {icao: eta.LivePredictor(icao) for icao in airport_geo.AIRPORTS}
+predictor = predictors["KBOS"]
+# Other airports with a trained model get their own adsb.fi feed (PREDICT_AIRPORTS=KJFK,EGLL to choose).
+EXTRA_AIRPORTS = [i for i in os.getenv("PREDICT_AIRPORTS", ",".join(airport_geo.AIRPORTS)).upper().split(",")
+                  if i in airport_geo.AIRPORTS and i != "KBOS"]
+airport_latest: dict[str, dict] = {}   # icao -> latest snapshot from that airport's own feed
+global_predictor = global_model.GlobalPredictor()   # rough landing estimates for the world feed
+
+
+def airports_in(box):
+    """Prediction airports (not Logan) whose 40 nm feed area overlaps a (w, s, e, n) box."""
+    w, s_, e, n = box
+    out = set()
+    for icao in airport_latest:
+        ap = airport_geo.AIRPORTS[icao]
+        dlat = AIRPORT_RADIUS_NM / 60
+        dlon = dlat / max(0.1, math.cos(math.radians(ap.lat)))
+        if ap.lat - dlat <= n and ap.lat + dlat >= s_ and ap.lon - dlon <= e and ap.lon + dlon >= w:
+            out.add(icao)
+    return out
+
+
+def airport_message(icao):
+    snap = airport_latest[icao]
+    ap = airport_geo.AIRPORTS[icao]
+    return json.dumps({"type": "airport", "icao": icao, "name": ap.name, "lat": ap.lat, "lon": ap.lon, **snap},
+                      separators=(",", ":"))
 qnh_field = weather.QnhField()   # altimeter settings from every METAR station
 
 
@@ -134,6 +171,53 @@ async def weather_poller():
         except Exception as e:
             print(f"METAR fetch failed ({e}), retrying in 120s")
             await asyncio.sleep(120)
+
+
+def write_log(path, snap):
+    with path.open("a") as f:
+        f.write(json.dumps(snap) + "\n")
+
+
+async def airport_poller(icao, start_delay):
+    """Like poller(), for another prediction airport: its own adsb.fi feed every 10 s,
+    predictions, a log (for training later), and sent only to pages looking at it."""
+    ap = airport_geo.AIRPORTS[icao]
+    pred = predictors[icao]
+    log = HERE / f"{ap.log_prefix}_{time.strftime('%Y%m%d_%H%M')}.jsonl"
+    await asyncio.sleep(start_delay)   # stagger the feeds
+    failures, last_logged = 0, 0.0
+    while True:
+        delay = AIRPORT_POLL_SECONDS
+        try:
+            snap = await asyncio.to_thread(poll_once, ap.lat, ap.lon, AIRPORT_RADIUS_NM)
+            aircraft_db.enrich(snap["aircraft"])
+            weather.apply(snap["aircraft"], qnh_field)
+            try:
+                pred.update(snap)
+            except Exception as e:
+                print(f"{icao}: prediction failed ({type(e).__name__}: {e})")
+            failures = 0
+            airport_latest[icao] = snap
+            if snap["fetched_at"] - last_logged >= LOG_SECONDS - 0.5:
+                await asyncio.to_thread(write_log, log, snap)
+                last_logged = snap["fetched_at"]
+            msg = None
+            for c in list(clients):
+                if icao in c.airports:
+                    msg = msg or airport_message(icao)
+                    try:
+                        await c.send(msg)
+                    except Exception:
+                        clients.discard(c)
+        except RateLimited as e:
+            failures += 1
+            delay = max(e.retry_after or 0, min(MAX_BACKOFF, AIRPORT_POLL_SECONDS * 2 ** failures))
+            print(f"{icao}: rate limited, waiting {delay}s")
+        except Exception as e:
+            failures += 1
+            delay = min(MAX_BACKOFF, AIRPORT_POLL_SECONDS * 2 ** failures)
+            print(f"{icao}: poll failed ({e}), retrying in {delay}s")
+        await asyncio.sleep(delay)
 
 
 async def poller():
@@ -156,8 +240,7 @@ async def poller():
             failures = 0
             latest = snap
             if snap["fetched_at"] - last_logged >= LOG_SECONDS - 0.5:
-                with LOG.open("a") as f:
-                    f.write(json.dumps(snap) + "\n")
+                write_log(LOG, snap)
                 last_logged = snap["fetched_at"]
             await broadcast(snap)
             print(f"{len(snap['aircraft'])} aircraft -> {len(clients)} viewer(s)")
@@ -185,6 +268,14 @@ async def world_poller():
             snap, credits = await asyncio.to_thread(world_feed.poll_once)
             await asyncio.to_thread(aircraft_db.enrich, snap["aircraft"])  # OpenSky has no type/reg
             await asyncio.to_thread(weather.apply, snap["aircraft"], qnh_field)  # pressure-corrected altitude
+            # Rough landing estimates anywhere (aircraft in a detailed feed get the better one there).
+            detailed = {a["icao24"] for a in (latest or {}).get("aircraft", [])}
+            for f in airport_latest.values():
+                detailed |= {a["icao24"] for a in f.get("aircraft", [])}
+            try:
+                await asyncio.to_thread(global_predictor.update, snap["aircraft"], detailed)
+            except Exception as e:
+                print(f"World: global prediction failed ({type(e).__name__}: {e})")
             world.update(snap, credits)
             failures = 0
             await broadcast_world()
@@ -205,11 +296,15 @@ async def world_poller():
 
 @asynccontextmanager
 async def lifespan(app):
-    if predictor.available:
-        await asyncio.to_thread(predictor.seed_from_logs)
-        print(f"Landing model loaded: {predictor.status()}")
-    else:
-        print(f"Landing model off: {predictor.error}")
+    extra_tasks = []
+    for i, (icao, pred) in enumerate(predictors.items()):
+        if pred.available or pred.runways:
+            await asyncio.to_thread(pred.seed_from_logs)
+            print(f"{icao} models loaded: {pred.status()}")
+            if icao in EXTRA_AIRPORTS:
+                extra_tasks.append(asyncio.create_task(airport_poller(icao, 2.5 * len(extra_tasks) + 1)))
+        else:
+            print(f"{icao} landing model off: {pred.error}")
     weather_task = asyncio.create_task(weather_poller())
     task = asyncio.create_task(poller())
     world_task = None
@@ -218,6 +313,8 @@ async def lifespan(app):
     # Load the LLM in the background so the first question isn't a cold start.
     asyncio.create_task(asyncio.to_thread(backend.warm_up))
     yield
+    for t in extra_tasks:
+        t.cancel()
     task.cancel()
     weather_task.cancel()
     if world_task:
@@ -250,6 +347,9 @@ async def ws_endpoint(ws: WebSocket):
                 if view:
                     c.view = view
                     c.keep = world_feed.parse_keep(msg)
+                    before, c.airports = c.airports, airports_in(view[1])
+                    for icao in c.airports - before:   # don't make the page wait 10 s
+                        await c.send(airport_message(icao))
                     await send_world(c)
     except WebSocketDisconnect:
         pass
@@ -297,7 +397,8 @@ async def ask_endpoint(req: AskRequest, request: Request):
         raise HTTPException(503, "Ask Flive is busy right now. Try again in a moment.")
     try:
         history = [t.model_dump() for t in req.history]
-        return await asyncio.to_thread(ask.answer, req.question, history, latest, backend, world)
+        return await asyncio.to_thread(ask.answer, req.question, history, latest, backend, world,
+                                       dict(airport_latest))
     except ask.BackendUnavailable as e:
         print(f"Ask Flive unavailable: {e}")
         raise HTTPException(503, "Ask Flive's language model is offline right now.")
@@ -367,8 +468,14 @@ async def airline_logo(code: str):
 
 @app.get("/api/eta/status")
 async def eta_status():
-    """Is the landing-time model loaded, how good was it on held-out days, which runway is in use."""
-    return predictor.status()
+    """Are the models loaded, how good were they on held-out days, which runway is in use.
+    Logan's fields at the top level (as before), every airport under "airports"."""
+    return {**predictor.status(),
+            "airports": {i: {**p.status(), "live_feed": i == "KBOS" or i in airport_latest}
+                         for i, p in predictors.items()},
+            "global": {"available": global_predictor.available, "error": global_predictor.error,
+                       **({k: v for k, v in global_predictor.bundle["report"].items()}
+                          if global_predictor.available else {})}}
 
 
 @app.get("/api/world/stats")

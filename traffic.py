@@ -78,13 +78,15 @@ def operator(callsign, registration, known=UNSET):
     return "Unknown operator"
 
 
-def classify(a, dist, alt, gs, vs):
+def classify(a, dist, alt, gs, vs, ref=KBOS):
+    """Status relative to the airport at `ref` (Logan unless the live predictor for
+    another airport asks); `dist` is the distance to that airport."""
     if a.get("on_ground"):
         return "taxiing" if gs is not None and gs > 5 else "ground"
     if dist is None:
         return "enroute"
     track = a.get("track_deg")
-    off = angle_diff(track, bearing_deg((a["lat"], a["lon"]), KBOS)) if track is not None else None
+    off = angle_diff(track, bearing_deg((a["lat"], a["lon"]), ref)) if track is not None else None
     toward = off is not None and off < 45
     away = off is not None and off > 120
     descending = vs is not None and vs < -250

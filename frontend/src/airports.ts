@@ -38,6 +38,11 @@ function load(): Promise<void> {
   return loading;
 }
 
+/** Airport by ICAO code (after the list has loaded), e.g. for "probably landing at ...". */
+export function byIcao(icao: string): Airport | null {
+  return all.find((a) => a.icao === icao) ?? null;
+}
+
 /** Re-renders the caller once the airport list has arrived. */
 export function useAirports(): boolean {
   const [ready, setReady] = useState(grid != null);

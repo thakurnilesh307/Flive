@@ -1,6 +1,6 @@
-"""Arrival and departure detection at Logan (roadmap step 4).
+"""Arrival and departure detection (roadmap step 4), for any airport in airport_geo.
 
-Turns the 15-second snapshot logs (logan_*.jsonl) into events:
+Turns the 15-second snapshot logs (logan_*.jsonl) and imported history into events:
 
     JBU1883  A320  landing   2026-11-18 05:12:40  runway 04R
 
@@ -17,11 +17,11 @@ How it works:
    "lost on final", with a wider time uncertainty).
 3. The runway is the one whose centreline the aircraft is lined up on: heading
    within 25 degrees of the runway direction AND within 0.35 nm of the extended
-   centreline. Position matters because 04L/04R (and 22L/22R) share a heading.
+   centreline. Position matters because parallel runways (04L/04R) share a heading.
 4. Touchdown time is estimated between the last airborne and first ground sample
    (logs are 15 s apart) from the last altitude and descent rate.
 
-Run:  python events.py            -> prints a summary, writes data/events.csv
+Run:  python events.py [KBOS|KJFK|EGLL]   -> prints a summary, writes data/events_ICAO.csv
 These events are the labels for the landing-time model (roadmap step 5).
 """
 import csv
@@ -35,87 +35,17 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+import airport_geo as G
+
 HERE = Path(__file__).resolve().parent
-KBOS = (42.3656, -71.0096)
-FIELD_ELEV_FT = 20
 M_TO_FT = 3.28084
 MS_TO_KT = 1.943844
 MS_TO_FPM = 196.8504
 
-# Logan's runways from OurAirports (public domain): (low end, lat, lon, high end, lat, lon).
-# Landing on the low end ("04R") means flying from its threshold toward the high end.
-RUNWAYS_RAW = [
-    ("04L", 42.357997, -71.014344, "22R", 42.378322, -71.004511),
-    ("04R", 42.351064, -71.011801, "22L", 42.376923, -70.999288),
-    ("09", 42.35580063, -71.01290131, "27", 42.36019897, -70.98770142),
-    ("14", 42.35660171508789, -71.02330017089844, "32", 42.34859848022461, -71.0082015991211),
-    ("15L", 42.373600006103516, -71.00910186767578, "33R", 42.36859893798828, -71.00250244140625),
-    ("15R", 42.374298095703125, -71.01789855957031, "33L", 42.35459899902344, -70.9916000366211),
-]
-
 SEGMENT_GAP_S = 20 * 60     # missing this long = a separate visit
 MAX_SAMPLE_GAP_S = 90       # can't trust a transition across a bigger hole in the data
-HEADING_TOL = 25            # degrees
-CROSS_TRACK_NM = 0.35       # max distance from the extended centreline
 CONFIRM_S = 60              # the new state must hold for this long
-
-
-def _xy(lat, lon):
-    """Flat local projection around Logan, in nautical miles (fine within ~20 nm)."""
-    return ((lon - KBOS[1]) * 60 * math.cos(math.radians(KBOS[0])), (lat - KBOS[0]) * 60)
-
-
-def _angle_diff(a, b):
-    return abs((a - b + 180) % 360 - 180)
-
-
-@dataclass
-class RunwayEnd:
-    ident: str
-    x0: float          # threshold, nm
-    y0: float
-    ux: float          # unit vector along the landing direction
-    uy: float
-    heading: float     # true degrees
-    length: float      # nm
-
-    def offsets(self, lat, lon):
-        """(along-track from threshold, cross-track) in nm for a point."""
-        x, y = _xy(lat, lon)
-        dx, dy = x - self.x0, y - self.y0
-        return dx * self.ux + dy * self.uy, abs(-dx * self.uy + dy * self.ux)
-
-
-def _runway_ends():
-    ends = []
-    for le, la1, lo1, he, la2, lo2 in RUNWAYS_RAW:
-        for ident, a, b in ((le, (la1, lo1), (la2, lo2)), (he, (la2, lo2), (la1, lo1))):
-            x0, y0 = _xy(*a)
-            x1, y1 = _xy(*b)
-            length = math.hypot(x1 - x0, y1 - y0)
-            ux, uy = (x1 - x0) / length, (y1 - y0) / length
-            heading = math.degrees(math.atan2(ux, uy)) % 360
-            ends.append(RunwayEnd(ident, x0, y0, ux, uy, heading, length))
-    return ends
-
-
-RUNWAY_ENDS = _runway_ends()
-
-
-def match_runway(lat, lon, track, before=3.0, after=0.5):
-    """The runway end the aircraft is lined up with, or None.
-    `before`: how far before the threshold still counts (nm); `after`: past the far end."""
-    if track is None or lat is None or lon is None:
-        return None
-    best = None
-    for r in RUNWAY_ENDS:
-        if _angle_diff(track, r.heading) > HEADING_TOL:
-            continue
-        along, cross = r.offsets(lat, lon)
-        if cross <= CROSS_TRACK_NM and -before <= along <= r.length + after:
-            if best is None or cross < best[1]:
-                best = (r.ident, cross)
-    return best[0] if best else None
+_angle_diff = G.angle_diff
 
 
 @dataclass
@@ -264,7 +194,7 @@ def _covered(t, windows):
     return any(s <= t <= e for s, e in windows)
 
 
-def _lost_on_final(seg, windows):
+def _lost_on_final(ap, seg, windows):
     """Inferred landing for aircraft that never report 'on ground' (many light
     aircraft transponders, e.g. Cape Air's Cessnas): the track ends low,
     descending and lined up with a runway while our logs keep running."""
@@ -275,19 +205,19 @@ def _lost_on_final(seg, windows):
         return None
     if not (_covered(last.t + 60, windows) and _covered(last.t, windows)):
         return None   # our logging stopped, not the aircraft
-    rwy = match_runway(last.lat, last.lon, last.track, before=2.5, after=0.5)
+    rwy = ap.match_runway(last.lat, last.lon, last.track, before=2.5, after=0.5)
     if not rwy:
         return None
     sink = max(-(last.vs_fpm or -500), 500)
-    dt = min(120.0, max(0.0, last.alt_ft - FIELD_ELEV_FT) / sink * 60)
+    dt = min(120.0, max(0.0, last.alt_ft - ap.elev_ft) / sink * 60)
     return rwy, last.t + dt, dt / 2 + 15
 
 
-def _touchdown_time(a, b):
+def _touchdown_time(ap, a, b):
     """Between the last airborne (a) and first ground (b) sample: use the descent
     rate if we have it, otherwise the midpoint."""
     if a.alt_ft is not None and a.vs_fpm is not None and a.vs_fpm < -100:
-        dt = max(0.0, a.alt_ft - FIELD_ELEV_FT) / -a.vs_fpm * 60
+        dt = max(0.0, a.alt_ft - ap.elev_ft) / -a.vs_fpm * 60
         return min(b.t, a.t + dt)
     return (a.t + b.t) / 2
 
@@ -306,9 +236,11 @@ def _event(icao, a, b, kind, t, rwy, uncertainty, method):
     }
 
 
-def detect(tracks, windows=()):
-    """Returns (events, rejected Counter). `windows` = coverage(); needed for the
-    inferred 'lost on final' landings (otherwise those are skipped)."""
+def detect(tracks, windows=(), ap=None):
+    """Returns (events, rejected Counter) at airport `ap` (default Logan). `windows` =
+    coverage(); needed for the inferred 'lost on final' landings (otherwise skipped)."""
+    ap = ap or G.AIRPORTS["KBOS"]
+    elsewhere = f"not at a {ap.name} runway (helipad or other airport)"
     events, rejected = [], Counter()
     for icao, samples in tracks.items():
         for seg in segments(samples):
@@ -335,9 +267,9 @@ def detect(tracks, windows=()):
                         why = "climbing, not landing"
                     else:
                         trk = _track(seg, i - 1, -1)  # approach heading, from the last airborne samples
-                        rwy = match_runway(b.lat, b.lon, trk, before=3.0, after=0.5) \
-                            or match_runway(a.lat, a.lon, trk, before=3.0, after=0.5)
-                        why = None if rwy else "not at a Logan runway (helipad or other airport)"
+                        rwy = ap.match_runway(b.lat, b.lon, trk, before=3.0, after=0.5) \
+                            or ap.match_runway(a.lat, a.lon, trk, before=3.0, after=0.5)
+                        why = None if rwy else elsewhere
                 else:
                     later = [s for s in seg[i:] if s.t <= b.t + 120 and s.alt_ft is not None]
                     climbing = (b.vs_fpm is not None and b.vs_fpm > 300) or (
@@ -346,18 +278,18 @@ def detect(tracks, windows=()):
                         why = "not climbing after liftoff"
                     else:
                         trk = _track(seg, i, +1)  # departure heading, from the first airborne samples
-                        rwy = match_runway(a.lat, a.lon, trk, before=0.3, after=2.0) \
-                            or match_runway(b.lat, b.lon, trk, before=0.3, after=2.0)
-                        why = None if rwy else "not at a Logan runway (helipad or other airport)"
+                        rwy = ap.match_runway(a.lat, a.lon, trk, before=0.3, after=2.0) \
+                            or ap.match_runway(b.lat, b.lon, trk, before=0.3, after=2.0)
+                        why = None if rwy else elsewhere
                 if why:
                     rejected[f"{kind}: {why}"] += 1
                     continue
-                t = _touchdown_time(a, b) if kind == "landing" else (a.t + b.t) / 2
+                t = _touchdown_time(ap, a, b) if kind == "landing" else (a.t + b.t) / 2
                 last_event_t = b.t
                 events.append(_event(icao, a, b, kind, t, rwy, (b.t - a.t) / 2, "ground flag"))
             # No ground flag at all, but the track ends on short final: inferred landing.
             if windows and not any(g) and seg[-1].t - last_event_t > 10 * 60 and seg[-1].category != 8:
-                hit = _lost_on_final(seg, windows)
+                hit = _lost_on_final(ap, seg, windows)
                 if hit:
                     rwy, t, unc = hit
                     events.append(_event(icao, seg[-1], seg[-1], "landing", t, rwy, unc, "lost on final"))
@@ -387,10 +319,16 @@ def coverage(tracks_paths):
     return windows
 
 
-def load_all():
-    """Flive's own logs plus any imported adsb.lol history. Returns (tracks, windows, bad_lines)."""
-    paths = sorted(glob.glob(str(HERE / "logan_*.jsonl")))
-    hist = sorted(glob.glob(str(HERE / "data" / "history" / "*.jsonl.gz")))
+def log_paths(ap):
+    return sorted(glob.glob(str(HERE / f"{ap.log_prefix}_*.jsonl")))
+
+
+def load_all(ap=None):
+    """Flive's own logs plus any imported adsb.lol history for airport `ap` (default
+    Logan). Returns (tracks, windows, bad_lines, n_logs, n_history_days)."""
+    ap = ap or G.AIRPORTS["KBOS"]
+    paths = log_paths(ap)
+    hist = sorted(glob.glob(str(HERE / "data" / "history" / ap.icao / "*.jsonl.gz")))
     tracks, bad = load_tracks(paths)
     windows = coverage(paths) if paths else []
     if hist:
@@ -406,13 +344,14 @@ def load_all():
 
 
 def main():
-    tracks, windows, bad, n_logs, n_hist = load_all()
+    ap = G.get(sys.argv[1] if len(sys.argv) > 1 else "KBOS")
+    tracks, windows, bad, n_logs, n_hist = load_all(ap)
     if not tracks:
-        sys.exit("No data: run the server for a while, or scripts/import_history.py.")
-    events, rejected = detect(tracks, windows)
+        sys.exit(f"No data for {ap.icao}: run the server for a while, or scripts/import_history.py.")
+    events, rejected = detect(tracks, windows, ap)
     hours = sum(e - s for s, e in windows) / 3600
 
-    out = HERE / "data" / "events.csv"
+    out = HERE / "data" / f"events_{ap.icao}.csv"
     out.parent.mkdir(exist_ok=True)
     with open(out, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(events[0].keys()) if events else ["kind"])
@@ -420,7 +359,7 @@ def main():
         w.writerows(events)
 
     kinds = Counter(e["kind"] for e in events)
-    print(f"{n_logs} log files + {n_hist} imported days, {len(tracks)} aircraft, {hours:.1f} h of coverage"
+    print(f"{ap.icao}: {n_logs} log files + {n_hist} imported days, {len(tracks)} aircraft, {hours:.1f} h of coverage"
           f"{f', {bad} unreadable lines' if bad else ''}")
     inferred = sum(1 for e in events if e["method"] == "lost on final")
     print(f"Detected {kinds['landing']} landings ({inferred} inferred: lost from view on short final) "

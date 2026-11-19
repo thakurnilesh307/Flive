@@ -221,10 +221,14 @@ Coverage on a live check: 99% of worldwide aircraft got a type, 86% an operator.
 | `photos.py`, `logos.py` | Cached Planespotters photo lookup and airline logo cache |
 | `weather.py` | Worldwide METAR altimeter settings; pressure-corrected altitudes |
 | `events.py` | Landing/takeoff detection with runway assignment from the logs (step 4) |
-| `scripts/validate_events.py` | Scores `events.py` against OpenSky's KBOS arrival records |
-| `scripts/import_history.py` | Streams adsb.lol daily archives, keeps Boston-area traces |
+| `airport_geo.py` | The prediction airports (Logan, JFK, Heathrow): runways, elevation, time zone, nm maths |
+| `scripts/build_runways.py` | Builds `data/runways.csv` from OurAirports for those airports |
+| `scripts/validate_events.py` | Scores `events.py` against OpenSky's arrival records for an airport |
+| `scripts/import_history.py` | Streams adsb.lol daily archives, keeps traces around each prediction airport |
 | `dataset.py`, `train_eta.py` | Training rows from detected landings; model training and leave-one-day-out scoring |
-| `eta.py` | Live landing-time and runway predictions in the server |
+| `eta.py` | Live landing-time and runway predictions in the server, one predictor per airport |
+| `global_model.py` | Rough landing-time model for any airport (worldwide feed), tested on unseen areas |
+| `scripts/overnight.sh` | Unattended run: import more history, retrain every model, re-validate |
 | `train_runway.py` | Landing/takeoff runway classifiers, scored against "most-used runway" |
 | `scripts/build_aircraft_db.py` | Downloads the aircraft DB and the OpenFlights airline list into `data/` |
 | `poll_logan.py` | Retired OpenSky poller; its OAuth2 code will be reused for nightly arrival checks |
@@ -252,8 +256,8 @@ landing-time model (step 5).
 **History:** `python scripts/import_history.py 7` imports past days from
 [adsb.lol's open archives](https://github.com/adsblol/globe_history_2026) (ODbL).
 Each day is ~3.5 GB worldwide; the script streams it from GitHub without saving
-it and keeps only aircraft within 45 nm of Logan (`data/history/YYYY-MM-DD.jsonl.gz`,
-gitignored). Positions every few seconds instead of every 15. `events.py` reads
+it and keeps only aircraft within 45 nm of each prediction airport
+(`data/history/ICAO/YYYY-MM-DD.jsonl.gz`, gitignored; one download serves all of them). Positions every few seconds instead of every 15. `events.py` reads
 these alongside the live logs, so weeks of labelled landings don't need weeks of
 waiting.
 
@@ -270,10 +274,11 @@ is a median 10 s after OpenSky's "last seen".
 
 ```powershell
 python -m pip install -r requirements-ml.txt
-python scripts/import_history.py 7    # past week from adsb.lol (~6 min/day)
-python events.py                       # landings and takeoffs with runway
-python dataset.py                      # -> data/eta_dataset.csv
-python train_eta.py                    # -> data/eta_model.joblib (the server loads it)
+python scripts/import_history.py 7    # past week from adsb.lol, all airports in one pass
+python events.py KBOS                  # landings and takeoffs with runway
+python dataset.py KBOS                 # -> data/models/KBOS_eta_dataset.csv
+python train_eta.py KBOS               # -> data/models/KBOS_eta.joblib (the server loads it)
+python train_runway.py KBOS            # -> data/models/KBOS_runway.joblib
 ```
 
 - **Training rows:** every detected landing, walked back 30 minutes, one row
@@ -336,6 +341,62 @@ in the app is honest: when the model says over 90% (most of the time) it's right
 95-96% of the time. Live, `eta.py` adds `landing_runway`/`landing_runway_p` to
 arrivals and `takeoff_runway`/`takeoff_runway_p` to planes taxiing out (not ones
 that just landed), shown in the detail panel, both Logan tabs and Ask Flive.
+
+## More airports: JFK, Heathrow, and a rough model for everywhere
+
+Everything above was built for Logan, with Logan's runways hardcoded. Now the
+airport is a parameter (`airport_geo.py`: runways from OurAirports, field elevation,
+time zone), so the same detector, features and models run for any airport in
+`CONFIG`: currently Logan, JFK and Heathrow. One history download feeds all of them.
+
+**Detailed tier (Logan, JFK, Heathrow).** Each has its own landing-time and runway
+models, plus its own adsb.fi feed: Logan every 5 s, the others every 10 s. Requests
+from all feeds stay at least 1.2 s apart to respect adsb.fi's 1 request/s limit. The
+page only receives an airport's feed while the map is looking at it.
+
+| | Detection vs OpenSky | Landing time (held-out) | Straight line | Landing runway | Takeoff runway |
+| --- | --- | --- | --- | --- | --- |
+| Logan | 98% recall / 99% precision | 0.99 min | 4.85 | 94.1% (baseline 89.1%) | 91.7% (88.5%) |
+| JFK | 95% / 100% | 0.91 min | 4.99 | 90.8% (86.6%) | 98.3% (98.5%) |
+| Heathrow | 97% / 100% | 1.32 min | 6.05 | 94.4% (93.2%) | 97.8% (97.2%) |
+
+At JFK and Heathrow the takeoff-runway baseline is already ~98%: each mostly uses
+one departure runway per direction, so there's nothing left for a model to add.
+
+**Rough tier (everywhere else): `global_model.py`.** Worldwide, Flive only has
+OpenSky's 90 s snapshots and doesn't know the runway in use. This model uses only
+what one position report says, relative to the airport the plane seems to be
+heading for: distance, height above the field, speed, descent, heading, runway
+alignment and nearby traffic. The detector works at any airport with runway data,
+so the history areas also yield landings at the neighbours: Teterboro,
+Westchester, Gatwick, Luton, London City and others, 11 airports in all.
+
+It's tested leave-one-*area*-out: for example, train on Boston and New York, then
+predict London.
+
+| Area never seen in training | Global model | Straight line | Main airport, global vs its own model |
+| --- | --- | --- | --- |
+| Boston | 1.20 min | 4.07 | 1.17 vs 0.99 |
+| New York | 1.18 min | 2.93 | 1.04 vs 0.91 |
+| London | 1.32 min | 3.79 | 1.54 vs 1.32 |
+
+So a single model with no local knowledge gets within about 10–20 seconds of the
+dedicated ones.
+
+The weak part is *which airport* a plane is going to. A simple rule (lined up with a
+runway, otherwise pointed at the airport and on a normal ~3° descent) picks the right
+airport 68–86% of the time overall and 99% in the last five minutes. A classifier
+trained for this did *worse* on unseen areas, because it learned local habits like
+"the nearest big airport". So the server uses the rule, and the page labels these
+predictions as rough estimates.
+
+**A bug only live data showed.** On the first live Heathrow tab, an easyJet at 500 ft
+over Gatwick was "landing at Heathrow in 10 minutes". The training scores couldn't
+catch this: the models only ever saw real arrivals. The problem was the live check
+that decides who is arriving. `eta.landing_elsewhere()` now rejects planes lined up
+for, or low near, another airport. Checked on real arrivals, it drops 0% at Heathrow,
+0.2% at Logan and 1.5% at JFK, where a curved approach and LaGuardia's parallel
+runway headings make it harder.
 
 ## Roadmap
 

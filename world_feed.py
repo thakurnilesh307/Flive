@@ -98,7 +98,9 @@ def poll_once():
 # what the map needs. Same field names as the snapshot format, SI units.
 COMPACT_FIELDS = ["icao24", "callsign", "lat", "lon", "baro_alt_m", "on_ground",
                   "velocity_ms", "track_deg", "vert_rate_ms", "time_position", "category",
-                  "aircraft_type", "registration", "operator", "operator_icao", "alt_qnh_m"]
+                  "aircraft_type", "registration", "operator", "operator_icao", "alt_qnh_m",
+                  # global landing model (global_model.py): rough, only for likely arrivals
+                  "landing_at", "landing_lo_at", "landing_hi_at", "landing_airport", "landing_runway"]
 
 
 def _r(v, nd):
@@ -110,7 +112,8 @@ def compact_row(a):
             1 if a["on_ground"] else 0, _r(a["velocity_ms"], 1), _r(a["track_deg"], 0),
             _r(a["vert_rate_ms"], 1), _r(a["time_position"], 0), a["category"],
             a.get("aircraft_type"), a.get("registration"), a.get("operator"), a.get("operator_icao"),
-            _r(a.get("alt_qnh_m"), 0)]
+            _r(a.get("alt_qnh_m"), 0), _r(a.get("landing_at"), 0), _r(a.get("landing_lo_at"), 0),
+            _r(a.get("landing_hi_at"), 0), a.get("landing_airport"), a.get("landing_runway")]
 
 
 def _wrap(x):

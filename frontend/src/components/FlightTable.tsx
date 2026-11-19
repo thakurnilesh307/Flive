@@ -16,8 +16,10 @@ export type Tab = "arrivals" | "departures" | "inview";
 interface Props {
   tab: Tab;
   onTab: (t: Tab) => void;
-  /** which tabs to show (Logan tabs only when the map is over Boston) */
+  /** which tabs to show (airport tabs only when the map is over a prediction airport) */
   tabs: Tab[];
+  /** the airport the arrivals/departures tabs are about */
+  airportName: string | null;
   counts: Record<Tab, number>;
   rows: Derived[];
   /** note shown on the right of the tab bar */
@@ -34,12 +36,12 @@ interface Props {
 }
 
 const TABS: { id: Tab; label: string; rotate: number }[] = [
-  { id: "arrivals", label: "Logan arrivals", rotate: 120 },
-  { id: "departures", label: "Logan departures", rotate: 30 },
+  { id: "arrivals", label: "arrivals", rotate: 120 },
+  { id: "departures", label: "departures", rotate: 30 },
   { id: "inview", label: "In view", rotate: 75 },
 ];
 
-export default function FlightTable({ tab, onTab, tabs, counts, rows, note, searching, airports, onAirport, selectedId, onSelect, open, onToggle, serverNow }: Props) {
+export default function FlightTable({ tab, onTab, tabs, airportName, counts, rows, note, searching, airports, onAirport, selectedId, onSelect, open, onToggle, serverNow }: Props) {
   useAirports(); // re-render with "near X" positions once the airport list arrives
   return (
     <section className={`panel table-panel ${open ? "open" : ""}`} aria-label="Flight list">
@@ -56,7 +58,7 @@ export default function FlightTable({ tab, onTab, tabs, counts, rows, note, sear
               onClick={() => { onTab(t.id); if (!open) onToggle(); }}
             >
               <PlaneGlyph size={18} rotate={t.rotate} />
-              {t.label} <em>{counts[t.id].toLocaleString("en-US")}</em>
+              {t.id === "inview" ? t.label : `${airportName ?? ""} ${t.label}`.trim()} <em>{counts[t.id].toLocaleString("en-US")}</em>
             </button>
           ))
         )}
@@ -103,11 +105,15 @@ export default function FlightTable({ tab, onTab, tabs, counts, rows, note, sear
                   <td>{d.a.aircraft_type ?? "–"}</td>
                   <td className="num">{fmtAlt(d)}</td>
                   <td className="num">{fmtSpeed(d)}</td>
-                  <td className="muted">{describePosition(d.a) ?? `${fmtDist(d)} from KBOS`}</td>
+                  <td className="muted">{describePosition(d.a) ?? `${fmtDist(d)} from ${d.a.airport ?? "KBOS"}`}</td>
                   <td>
                     <StatusPill status={d.status} />
                     {d.a.landing_at ? (
-                      <span className="eta-chip">lands ~{minsUntil(d.a.landing_at, serverNow)} min{d.a.landing_runway ? ` · ${d.a.landing_runway}` : ""}</span>
+                      <span className={`eta-chip ${d.a.prediction === "global" ? "rough" : ""}`}
+                        title={d.a.prediction === "global" ? "Rough estimate from the global model" : "My model for this airport"}>
+                        {d.a.prediction === "global" ? `~${minsUntil(d.a.landing_at, serverNow)} min to ${d.a.landing_airport ?? "land"}` : `lands ~${minsUntil(d.a.landing_at, serverNow)} min`}
+                        {d.a.landing_runway ? ` · ${d.a.landing_runway}` : ""}
+                      </span>
                     ) : d.a.takeoff_runway ? (
                       <span className="eta-chip">to runway {d.a.takeoff_runway}</span>
                     ) : null}

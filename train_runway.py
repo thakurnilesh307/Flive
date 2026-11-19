@@ -1,6 +1,6 @@
-"""Which runway will each flight use? (per-flight runway prediction at Logan)
+"""Which runway will each flight use? (per-flight runway prediction, any airport)
 
-    python train_runway.py
+    python train_runway.py [KBOS|KJFK|EGLL]
 
 Two classifiers, trained on the runways events.py detected:
 - arrivals:   for a plane in the air, which runway will it land on?
@@ -8,16 +8,17 @@ Two classifiers, trained on the runways events.py detected:
 - departures: for a plane taxiing, which runway will it take off from?
               (rows every 15 s over its last 15 minutes of taxiing)
 
-Baseline to beat: "the runway Logan used most for that (landings or takeoffs) in the
+Baseline to beat: "the runway the airport used most for that (landings or takeoffs) in the
 last 30 minutes". Tested leave-one-day-out, like the landing-time model. Accuracy is
 reported by how far ahead the prediction was made. The probability the model gives
 is shown in the app ("22L, 92%"), so it's checked too: when the model says ~90%,
 is it right ~90% of the time?
 
-Writes data/runway_model.joblib and data/runway_report.json.
+Writes data/models/ICAO_runway.joblib and ICAO_runway_report.json.
 """
 import bisect
 import json
+import sys
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
@@ -27,6 +28,7 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier
 
+import airport_geo as G
 import dataset as D
 import events as E
 
@@ -38,7 +40,11 @@ ARR_BUCKETS = [(0, 300, "0-5 min out"), (300, 600, "5-10 min"), (600, 1200, "10-
 DEP_BUCKETS = [(0, 180, "0-3 min before takeoff"), (180, 480, "3-8 min"), (480, 900, "8-15 min")]
 
 
-def build_arrivals(tracks, evs, use, traffic):
+def model_path(ap):
+    return D.MODELS / f"{ap.icao}_runway.joblib"
+
+
+def build_arrivals(ap, tracks, evs, use, traffic):
     rows = []
     for ev in (e for e in evs if e["kind"] == "landing"):
         samples = tracks.get(ev["icao24"], [])
@@ -47,17 +53,17 @@ def build_arrivals(tracks, evs, use, traffic):
         for s in samples[i0:]:
             if s.t >= ev["time"] - 5:
                 break
-            if s.t < next_t or not D.usable(s):
+            if s.t < next_t or not D.usable(ap, s):
                 continue
             next_t = s.t + ARR_STEP_S
-            row = {"day": datetime.fromtimestamp(ev["time"], D.BOSTON).strftime("%Y-%m-%d"),
+            row = {"day": datetime.fromtimestamp(ev["time"], ap.tz).strftime("%Y-%m-%d"),
                    "ahead_s": ev["time"] - s.t, "label": ev["runway"]}
-            row.update(D.arrival_runway_features(s, s.t, traffic.count(s.t, ev["icao24"]), use))
+            row.update(D.arrival_runway_features(ap, s, s.t, traffic.count(s.t, ev["icao24"]), use))
             rows.append(row)
     return pd.DataFrame(rows)
 
 
-def build_departures(tracks, evs, use):
+def build_departures(ap, tracks, evs, use):
     rows = []
     for ev in (e for e in evs if e["kind"] == "takeoff"):
         samples = tracks.get(ev["icao24"], [])
@@ -66,12 +72,12 @@ def build_departures(tracks, evs, use):
         for s in samples[i0:]:
             if s.t >= ev["time"]:
                 break
-            if s.t < next_t or not D.taxiing(s):
+            if s.t < next_t or not D.taxiing(ap, s):
                 continue
             next_t = s.t + DEP_STEP_S
-            row = {"day": datetime.fromtimestamp(ev["time"], D.BOSTON).strftime("%Y-%m-%d"),
+            row = {"day": datetime.fromtimestamp(ev["time"], ap.tz).strftime("%Y-%m-%d"),
                    "ahead_s": ev["time"] - s.t, "label": ev["runway"]}
-            row.update(D.departure_runway_features(s, s.t, use))
+            row.update(D.departure_runway_features(ap, s, s.t, use))
             rows.append(row)
     return pd.DataFrame(rows)
 
@@ -92,11 +98,15 @@ def baseline(df, kind):
 
 
 def evaluate(df, kind, buckets):
-    feats = [c for c in df.columns if c not in ("day", "ahead_s", "label", "runway_in_use")]
+    # Drop columns that never vary (runways nobody used for this kind at this airport).
+    feats = [c for c in df.columns if c not in ("day", "ahead_s", "label", "runway_in_use")
+             and df[c].nunique(dropna=False) > 1]
     per_day = df.groupby("day").size()
     days = [d for d in sorted(per_day.index) if per_day[d] >= MIN_DAY_EVENTS * 10]
     prefix = "land_" if kind == "landing" else "take_"
     use_cols = [c for c in df.columns if c.startswith(prefix) and c != "take_total"]
+    if len(days) < 2:
+        raise SystemExit(f"Need at least 2 days with {MIN_DAY_EVENTS}+ {kind}s to test on unseen days.")
     preds, probs, base, truth, ahead = [], [], [], [], []
     for d in days:
         tr, te = df[df.day != d], df[df.day == d]
@@ -140,12 +150,14 @@ def show(name, r):
 
 
 def main():
-    tracks, windows, _, _, _ = E.load_all()
-    evs, _ = E.detect(tracks, windows)
+    ap = G.get(sys.argv[1] if len(sys.argv) > 1 else "KBOS")
+    tracks, windows, _, _, _ = E.load_all(ap)
+    evs, _ = E.detect(tracks, windows, ap)
     use = D.RunwayUse(evs)
-    traffic = D.TrafficIndex(tracks)
-    arr = build_arrivals(tracks, evs, use, traffic)
-    dep = build_departures(tracks, evs, use)
+    traffic = D.TrafficIndex(ap, tracks)
+    arr = build_arrivals(ap, tracks, evs, use, traffic)
+    dep = build_departures(ap, tracks, evs, use)
+    print(f"{ap.icao}:", end=" ")
     print(f"{len(arr):,} arrival rows ({arr.label.nunique()} runways), {len(dep):,} departure rows "
           f"({dep.label.nunique()} runways)")
     print("arrival runways:", dict(Counter(arr.label).most_common()))
@@ -154,10 +166,12 @@ def main():
     dep_r, dep_m, dep_f = evaluate(dep, "takeoff", DEP_BUCKETS)
     show("Arrivals (landing runway)", arr_r)
     show("Departures (takeoff runway, while taxiing)", dep_r)
+    D.MODELS.mkdir(parents=True, exist_ok=True)
     joblib.dump({"arrival": arr_m, "arrival_features": arr_f, "departure": dep_m, "departure_features": dep_f,
-                 "report": {"arrivals": arr_r, "departures": dep_r}}, HERE / "data" / "runway_model.joblib")
-    (HERE / "data" / "runway_report.json").write_text(json.dumps({"arrivals": arr_r, "departures": dep_r}, indent=2))
-    print("\nSaved data/runway_model.joblib and data/runway_report.json")
+                 "airport": ap.icao, "report": {"arrivals": arr_r, "departures": dep_r}}, model_path(ap))
+    report_path = D.MODELS / f"{ap.icao}_runway_report.json"
+    report_path.write_text(json.dumps({"arrivals": arr_r, "departures": dep_r}, indent=2))
+    print(f"\nSaved {model_path(ap).relative_to(HERE)} and {report_path.relative_to(HERE)}")
 
 
 if __name__ == "__main__":

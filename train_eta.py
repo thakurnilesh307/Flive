@@ -1,6 +1,6 @@
 """Train and score the landing-time model (roadmap step 5).
 
-    python train_eta.py        (after: python dataset.py)
+    python train_eta.py [KBOS|KJFK|EGLL]     (after: python dataset.py ICAO)
 
 Compares three ways of answering "how long until this plane lands?":
   1. straight line:  distance / groundspeed (what Ask Flive says today, as a lower bound)
@@ -12,7 +12,7 @@ never seen, repeat for each day. With only one usable day it falls back to a tim
 split (first 70% of that day's landings vs the rest) and says so, since that's a
 weaker test. Errors are reported overall and at "5, 10 and 20 minutes out".
 
-Writes data/eta_model.joblib (trained on everything) and data/eta_report.json.
+Writes data/models/ICAO_eta.joblib (trained on everything) and ICAO_eta_report.json.
 """
 import json
 import sys
@@ -24,17 +24,22 @@ import pandas as pd
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.inspection import permutation_importance
 
+import airport_geo as G
+import dataset as D
+
 HERE = Path(__file__).resolve().parent
-DATA = HERE / "data" / "eta_dataset.csv"
 MIN_DAY_LANDINGS = 50        # days with fewer landings aren't worth a test fold
 HORIZONS = {"5 min out": (240, 360), "10 min out": (540, 660), "20 min out": (1140, 1260)}
 
-FEATURES = [
+BASE_FEATURES = [
     "dist_nm", "bearing_sin", "bearing_cos", "alt_ft", "gs_kt", "vs_fpm", "track_sin", "track_cos",
-    "off_kbos_deg", "naive_eta_s", "traffic_15nm", "landings_30min", "hour_sin", "hour_cos", "category",
+    "off_airport_deg", "naive_eta_s", "traffic_15nm", "landings_30min", "hour_sin", "hour_cos", "category",
     "rwy_along_nm", "rwy_cross_nm", "rwy_thr_dist_nm", "rwy_hdg_diff",
-    "cfg_04L", "cfg_04R", "cfg_09", "cfg_15R", "cfg_22L", "cfg_27", "cfg_32", "cfg_33L",
 ]
+
+
+def model_path(ap):
+    return D.MODELS / f"{ap.icao}_eta.joblib"
 
 
 def make_model(quantile=None):
@@ -75,9 +80,14 @@ def folds(df):
 
 
 def main():
-    if not DATA.exists():
-        sys.exit("Run python dataset.py first.")
-    df = pd.read_csv(DATA)
+    ap = G.get(sys.argv[1] if len(sys.argv) > 1 else "KBOS")
+    data = D.dataset_path(ap)
+    if not data.exists():
+        sys.exit(f"Run python dataset.py {ap.icao} first.")
+    df = pd.read_csv(data)
+    # One "runway in use" flag per runway end that was ever the runway in use here.
+    FEATURES = BASE_FEATURES + [c for c in df.columns if c.startswith("cfg_") and df[c].any()]
+    print(f"{ap.icao}: {len(df):,} rows from {df.day.nunique()} days")
     X, y = df[FEATURES].astype(float), df["label_s"].to_numpy()
     results = {"straight line": [], "scaled line": [], "model": []}
     preds_all, inside, held = [], [], []
@@ -133,8 +143,9 @@ def main():
     final = make_model().fit(X, y)
     bundle = {"model": final, "lo": make_model(RANGE[0]).fit(X, y), "hi": make_model(RANGE[1]).fit(X, y),
               "features": FEATURES, "trained_rows": int(len(df)), "days": sorted(df.day.unique().tolist()),
-              "mae_min": summary["model"]["mae_min"], "range_widen": summary["range_widen"]}
-    joblib.dump(bundle, HERE / "data" / "eta_model.joblib")
+              "mae_min": summary["model"]["mae_min"], "range_widen": summary["range_widen"], "airport": ap.icao,
+              "straight_mae_min": summary["straight line"]["mae_min"]}
+    joblib.dump(bundle, model_path(ap))
     sample = df.sample(min(4000, len(df)), random_state=1)
     imp = permutation_importance(final, sample[FEATURES].astype(float), sample["label_s"],
                                  n_repeats=3, random_state=0, scoring="neg_mean_absolute_error")
@@ -145,8 +156,9 @@ def main():
 
     report = {"rows": int(len(df)), "days": sorted(df.day.unique().tolist()), "summary": summary,
               "folds": results, "importance": {f: round(float(v), 1) for f, v in top}}
-    (HERE / "data" / "eta_report.json").write_text(json.dumps(report, indent=2))
-    print("\nSaved data/eta_model.joblib and data/eta_report.json")
+    report_path = D.MODELS / f"{ap.icao}_eta_report.json"
+    report_path.write_text(json.dumps(report, indent=2))
+    print(f"\nSaved {model_path(ap).relative_to(HERE)} and {report_path.relative_to(HERE)}")
 
 
 if __name__ == "__main__":
