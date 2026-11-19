@@ -142,7 +142,8 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   extended centreline (RUNWAYS_RAW from OurAirports), "lost on final" inferred
   landings for aircraft with no ground flag. `scripts/validate_events.py` scores
   it against OpenSky /flights/arrival (one UTC day per request max: a query may
-  touch at most 2 day partitions). Last check: 97% recall, 100% precision.
+  touch at most 2 day partitions). Last check (Nov 1-18): KBOS 96% / KJFK 97% /
+  EGLL 97% recall, 100% precision.
 - `scripts/import_history.py` - past days from adsb.lol globe_history releases
   (ODbL, ~3.5 GB/day worldwide, split .tar.aa/.ab): streamed, never stored,
   keeps points within 45 nm of each prediction airport in one pass ->
@@ -157,8 +158,9 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   (`is_arrival`: not climbing, not on ground in last 5 min, not helicopters),
   adds `landing_at`, `landing_lo_at`, `landing_hi_at` (unix s) to Boston
   snapshot aircraft and `runway_in_use` to the snapshot; logged. `GET
-  /api/eta/status`. Retrain after importing more history. Last: 1.01 min
-  held-out MAE vs 4.85 straight line (3,520 landings, leave-one-day-out).
+  /api/eta/status`. Retrain after importing more history. Last (20 days,
+  leave-one-day-out): KBOS 1.19 min vs 5.51 straight line, KJFK 0.98 vs 5.83,
+  EGLL 1.22 vs 6.59. Global leave-one-area-out 1.31 pooled; destination = rule.
 - `train_runway.py` - per-flight runway classifiers (arrival: landing runway;
   departure: takeoff runway while taxiing), features from
   `dataset.arrival_runway_features` / `departure_runway_features` (shared with
@@ -167,7 +169,7 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   columns exist for every runway end at the airport; constant ones are dropped
   at training and live selects the bundle's feature list. Live fields:
   `landing_runway(_p)`, `takeoff_runway(_p)`; taxiing = `dataset.taxiing()` and
-  not landed in the last 20 min. Last: 94.6% / 91.4% vs 88.9% / 88.4% baseline.
+  not landed in the last 20 min. Last (KBOS, 20 days): 95.6% / 95.0% vs 92.7% / 92.4% baseline.
 - `explore.py` - (planned) pandas/matplotlib analysis of the JSONL logs.
 
 ## Snapshot format (do not change field names without updating all consumers)

@@ -266,7 +266,9 @@ waiting.
 **97% recall** (142 of 147 OpenSky arrivals found) and **100% precision** (all 142
 detected landings confirmed). The 5 misses: two touchdowns inside gaps in the old
 logs, a helicopter, a low pass and an arrival outside our data. Our touchdown time
-is a median 10 s after OpenSky's "last seen".
+is a median 10 s after OpenSky's "last seen". Re-run on 18 days of history (Nov 1-18):
+96% recall / 100% precision at Logan (9,666 OpenSky arrivals), 97% / 100% at JFK
+(9,710) and 97% / 100% at Heathrow (11,146).
 
 ## Landing-time model (step 5)
 
@@ -294,14 +296,20 @@ python train_runway.py KBOS            # -> data/models/KBOS_runway.joblib
 - **Test:** leave-one-day-out (positions 30 s apart are near-duplicates, so a
   random split would flatter it).
 
-Results on the past week (3,520 landings, 104,599 rows, each day predicted by a
-model that never saw it):
+Results on 20 days of Logan traffic (296,708 rows, Oct 31 - Nov 19, each day
+predicted by a model that never saw it):
 
 | | overall | 5 min out | 10 min out | 20 min out | within 1 min |
 | --- | --- | --- | --- | --- | --- |
-| Straight line (distance / speed) | 4.85 min | 1.32 | 5.67 | 13.37 | 30% |
-| Straight line x fitted factor | 3.42 min | | | | |
-| **Model** | **1.01 min** | **0.40** | **1.09** | **2.90** | **68%** |
+| Straight line (distance / speed) | 5.51 min | 1.26 | 5.68 | 13.74 | 28% |
+| Straight line x fitted factor | 3.62 min | | | | |
+| **Model** | **1.19 min** | **0.34** | **1.15** | **2.70** | **65%** |
+
+The first run, on one week, scored 1.01 min overall. Tripling the data made the
+headline *worse* but the model better: at 5 and 20 minutes out it improved, and the
+straight-line baseline got worse by more (4.85 -> 5.51), so the 20-day test set is
+simply harder. One held-out day scores 2.4 min on its own. A small test set flatters
+you; the 20-day number is the one to trust.
 
 What it learned matters most: altitude (a plane 15 nm out at 10,000 ft is far
 from landing; at 2,000 ft it's nearly down), then where it is relative to the
@@ -325,12 +333,15 @@ predicted 2 to 15 minutes ahead landed 0.2 to 2.6 minutes from the prediction,
 detected: which runway an arrival will land on (rows every 30 s over its last 30
 minutes) and which runway a taxiing plane will take off from (rows every 15 s over
 its last 15 minutes of taxiing). Baseline to beat: "the runway Logan used most in
-the last 30 minutes". Leave-one-day-out, 9 days:
+the last 30 minutes". Leave-one-day-out, 20 days:
 
-| | model | baseline | closest in | furthest out |
-| --- | --- | --- | --- | --- |
-| Landing runway | **94.6%** | 88.9% | 96.9% (0-5 min) | 90.8% (20-30 min) |
-| Takeoff runway (taxiing) | **91.4%** | 88.4% | 95.1% (0-3 min) | 87.2% (8-15 min) |
+| | model | baseline |
+| --- | --- | --- |
+| Landing runway | **95.6%** | 92.7% |
+| Takeoff runway (taxiing) | **95.0%** | 92.4% |
+
+(First run on 9 days: 94.6% / 91.4% vs 88.9% / 88.4%. Accuracy is highest close to
+landing or takeoff and lowest furthest out.)
 
 The first version only matched the baseline (88%) and was worse far out, picking
 runways nobody was using. Three changes fixed that: only runways used in the last
@@ -356,11 +367,12 @@ page only receives an airport's feed while the map is looking at it.
 
 | | Detection vs OpenSky | Landing time (held-out) | Straight line | Landing runway | Takeoff runway |
 | --- | --- | --- | --- | --- | --- |
-| Logan | 98% recall / 99% precision | 0.99 min | 4.85 | 94.1% (baseline 89.1%) | 91.7% (88.5%) |
-| JFK | 95% / 100% | 0.91 min | 4.99 | 90.8% (86.6%) | 98.3% (98.5%) |
-| Heathrow | 97% / 100% | 1.32 min | 6.05 | 94.4% (93.2%) | 97.8% (97.2%) |
+| Logan | 96% recall / 100% precision | 1.19 min | 5.51 | 95.6% (baseline 92.7%) | 95.0% (92.4%) |
+| JFK | 97% / 100% | 0.98 min | 5.83 | 91.8% (89.0%) | 98.2% (95.7%) |
+| Heathrow | 97% / 100% | 1.22 min | 6.59 | 95.3% (93.9%) | 98.8% (98.1%) |
 
-At JFK and Heathrow the takeoff-runway baseline is already ~98%: each mostly uses
+19-20 held-out days each (Oct 31 - Nov 19); detection checked on Nov 1-18 against
+about 10,000 OpenSky arrivals per airport. At Heathrow the takeoff-runway baseline is already ~98%: each mostly uses
 one departure runway per direction, so there's nothing left for a model to add.
 
 **Rough tier (everywhere else): `global_model.py`.** Worldwide, Flive only has
@@ -376,18 +388,20 @@ predict London.
 
 | Area never seen in training | Global model | Straight line | Main airport, global vs its own model |
 | --- | --- | --- | --- |
-| Boston | 1.20 min | 4.07 | 1.17 vs 0.99 |
-| New York | 1.18 min | 2.93 | 1.04 vs 0.91 |
-| London | 1.32 min | 3.79 | 1.54 vs 1.32 |
+| Boston | 1.39 min | 4.54 | 1.38 vs 1.19 |
+| New York | 1.22 min | 3.37 | 1.31 vs 0.98 |
+| London | 1.40 min | 4.27 | 1.67 vs 1.22 |
 
-So a single model with no local knowledge gets within about 10–20 seconds of the
-dedicated ones.
+Trained on 1.43 million rows. So a single model with no local knowledge gets within
+about 10-30 seconds of the dedicated ones.
 
 The weak part is *which airport* a plane is going to. A simple rule (lined up with a
 runway, otherwise pointed at the airport and on a normal ~3° descent) picks the right
-airport 68–86% of the time overall and 99% in the last five minutes. A classifier
-trained for this did *worse* on unseen areas, because it learned local habits like
-"the nearest big airport". So the server uses the rule, and the page labels these
+airport 68-83% of the time overall (75% on average) and 99% in the last five minutes.
+A classifier trained for this did *worse* on unseen areas (67% average), because it
+learned local habits like "the nearest big airport"; a geometry-only version came
+close (73%) and won in New York, but not overall. `global_model.py` picks whichever
+wins on each retrain. So the server uses the rule, and the page labels these
 predictions as rough estimates.
 
 **A bug only live data showed.** On the first live Heathrow tab, an easyJet at 500 ft

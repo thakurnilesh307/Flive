@@ -386,14 +386,15 @@ export default function About() {
                 moment it touches down or takes off (its &quot;on ground&quot; flag flips), and figure out which runway it used from
                 its heading and position. The flag glitches a lot, so there are sanity checks, and small planes that never
                 send it get an inferred landing when they disappear low on final. Checked against OpenSky&apos;s official
-                arrival records, it found 97% of Logan arrivals, and every landing it found was real.
+                arrival records over 18 days, it found 96-97% of arrivals at Logan, JFK and Heathrow, and every landing it found was real.
               </li>
               <li>
                 <b>Predict when each plane lands (done, and live).</b> The simple guess is distance divided by speed, but planes
                 don&apos;t fly straight in: they fly the approach pattern for whichever runway is in use, so that guess was almost
-                5 minutes off on average. I trained a model on a week of past Logan traffic (about 3,500 landings, downloaded
-                from adsb.lol&apos;s open archives) and tested it on days it had never seen: it&apos;s about 1 minute off on
-                average, and under 3 minutes off even 20 minutes before landing. You can see it on the map: click an arriving
+                5 minutes off on average. I trained a model on 20 days of past Logan traffic (downloaded from adsb.lol&apos;s open
+                archives) and tested it on days it had never seen: it&apos;s about 1.2 minutes off on average, and under 3 minutes
+                off even 20 minutes before landing. (On one week it scored 1.0; more test days include harder ones, so this is
+                the honest number.) You can see it on the map: click an arriving
                 plane, or open the Logan arrivals tab. The first time I watched it live, five arrivals landed between 12 seconds
                 and 2.6 minutes from what it predicted.
               </li>
@@ -401,16 +402,16 @@ export default function About() {
                 <b>Predict which runway each flight uses (done, and live).</b> Logan often lands or takes off on two runways at
                 once, so which one a plane gets isn&apos;t obvious. A second model guesses the landing runway for arrivals and the
                 takeoff runway for planes still taxiing, with how sure it is. On days it never saw, it got the landing runway right
-                95% of the time and the takeoff runway 91% of the time, versus about 88% for just guessing &quot;whichever runway
+                96% of the time and the takeoff runway 95% of the time, versus about 92% for just guessing &quot;whichever runway
                 Logan has been using most&quot;. My first version only tied that simple guess, until I stopped it from picking
                 runways nobody was using.
               </li>
               <li>
                 <b>More airports (done, and live).</b> Everything started out hardcoded for Logan. Now the same code works for any
                 airport, and JFK and London Heathrow get the full treatment: their own landing-time and runway models and a fast
-                live feed. On days the models never saw, JFK landings were predicted about 0.9 minutes off and Heathrow about 1.3.
+                live feed. On days the models never saw, JFK landings were predicted about 1.0 minute off and Heathrow about 1.2.
                 Everywhere else gets a rougher estimate from one &quot;global&quot; model. It only knows what a single position says,
-                and I tested it on whole cities it never trained on: it was about 1.2 minutes off, close to the dedicated models.
+                and I tested it on whole cities it never trained on: it was about 1.2 to 1.4 minutes off, close to the dedicated models.
                 The hard part turned out to be guessing <i>which</i> airport a plane is going to, so those predictions are labelled
                 as rough. The first live run also caught a plane landing at Gatwick being counted as a Heathrow arrival. Fixed now.
               </li>
@@ -422,12 +423,12 @@ export default function About() {
             </ol>
             <Dev title="Technical details: the model and how it's tested">
               <ul>
-                <li><b>Data:</b> <code>scripts/import_history.py</code> streams adsb.lol&apos;s daily archives (ODbL, ~3.5 GB/day worldwide) and keeps only traces within 45 nm of Logan; <code>events.py</code> turns them (and the live logs) into landings with runway; checked against OpenSky&apos;s arrival records at 98% recall and 99% precision.</li>
+                <li><b>Data:</b> <code>scripts/import_history.py</code> streams adsb.lol&apos;s daily archives (ODbL, ~3.5 GB/day worldwide) and keeps only traces within 45 nm of Logan; <code>events.py</code> turns them (and the live logs) into landings with runway; checked against OpenSky&apos;s arrival records (Nov 1-18) at 96-97% recall and 100% precision at all three airports.</li>
                 <li><b>Rows:</b> each landing walked back 30 minutes, one row every 30 s: distance and bearing from Logan, altitude, speed, vertical rate, heading vs the runway in use, arrival-flow traffic, time of day, and the label (seconds to touchdown). The runway it actually landed on is NOT a feature (you don&apos;t know it in advance); the runway in use over the previous 30 minutes is. The same <code>feature_row()</code> builds inputs for training and live serving.</li>
                 <li><b>Model:</b> scikit-learn <code>HistGradientBoostingRegressor</code> with absolute-error loss, plus 10th/90th percentile models for the &quot;likely&quot; range, widened by a factor calibrated on held-out days so it holds about 80% of real landings.</li>
-                <li><b>Test:</b> leave-one-day-out (rows 30 s apart are near-duplicates, so a random split would flatter it). Held-out error: 1.01 min vs 4.85 for distance/speed; 0.40 / 1.09 / 2.90 min at 5 / 10 / 20 minutes out; 68% within a minute. Biggest inputs: altitude, then position relative to the runway in use.</li>
+                <li><b>Test:</b> leave-one-day-out (rows 30 s apart are near-duplicates, so a random split would flatter it). Held-out error over 20 days: 1.19 min vs 5.51 for distance/speed; 0.34 / 1.15 / 2.70 min at 5 / 10 / 20 minutes out; 65% within a minute (one week gave 1.01, on an easier test set). Biggest inputs: altitude, then position relative to the runway in use.</li>
                 <li><b>Live:</b> <code>eta.py</code> keeps 40 minutes of the 5 s feed, detects the runway in use, and predicts only for aircraft that look like Logan arrivals (not climbing, not just off the ground, not helicopters: the model only ever saw planes that landed). Predictions are logged so they can be scored against real landings.</li>
-                <li><b>Any airport:</b> <code>airport_geo.py</code> holds each airport&apos;s runways (OurAirports), elevation and time zone; every script takes an ICAO code. JFK and Heathrow have their own adsb.fi feed every 10 s, with all requests at least 1.2 s apart. <code>global_model.py</code> trains one model on 11 airports (the history areas include neighbours like Gatwick and Teterboro, and the detector works anywhere). It&apos;s tested leave-one-area-out (1.18–1.32 min off vs 2.9–4.1 for distance/speed) and runs on the 90 s worldwide feed. For &quot;which airport&quot;, a simple rule beat a trained classifier on unseen areas, so the rule is what runs.</li>
+                <li><b>Any airport:</b> <code>airport_geo.py</code> holds each airport&apos;s runways (OurAirports), elevation and time zone; every script takes an ICAO code. JFK and Heathrow have their own adsb.fi feed every 10 s, with all requests at least 1.2 s apart. <code>global_model.py</code> trains one model on 11 airports (the history areas include neighbours like Gatwick and Teterboro, and the detector works anywhere). It&apos;s tested leave-one-area-out (1.22–1.40 min off vs 3.4–4.5 for distance/speed) and runs on the 90 s worldwide feed. For &quot;which airport&quot;, a simple rule beat a trained classifier on unseen areas, so the rule is what runs.</li>
                 <li><b>Next:</b> score the logged predictions every night against detected landings and OpenSky arrivals, and import more history so every runway setup and busy period is covered.</li>
               </ul>
             </Dev>
