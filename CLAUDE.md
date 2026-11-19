@@ -135,7 +135,13 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   them as "rough estimate". Bundle `data/models/GLOBAL_eta.joblib`.
   `data/runways.csv` covers every airport in airports.csv (+ CONFIG).
 - `scripts/overnight.sh START END` - unattended: import days, retrain all,
-  validate; log in `data/overnight.log`.
+  validate, score; log in `data/overnight.log`.
+- `score_predictions.py ICAO` - scores the predictions the live server logged
+  (one per plane per 30 s) against landings `events.detect` finds in the same
+  logs: error by minutes out, range coverage, runway, missed landings, false
+  arrivals by kind -> `data/scores/ICAO.json` (gitignored). First run: timing
+  0.8-1.1 min, but 26-59% of predictions were for planes that never landed here
+  (neighbouring airports, GA, overflights): `is_arrival` is the weak point.
 - `events.py` - step 4 (done, offline): logs -> landing/takeoff events with
   runway (`data/events_ICAO.csv`, gitignored). Despike ground flags (airborne blips
   first), confirm 60 s, runway by heading <= 25 deg AND <= 0.35 nm from the

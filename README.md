@@ -228,7 +228,8 @@ Coverage on a live check: 99% of worldwide aircraft got a type, 86% an operator.
 | `dataset.py`, `train_eta.py` | Training rows from detected landings; model training and leave-one-day-out scoring |
 | `eta.py` | Live landing-time and runway predictions in the server, one predictor per airport |
 | `global_model.py` | Rough landing-time model for any airport (worldwide feed), tested on unseen areas |
-| `scripts/overnight.sh` | Unattended run: import more history, retrain every model, re-validate |
+| `scripts/overnight.sh` | Unattended run: import more history, retrain every model, re-validate, score |
+| `score_predictions.py` | Scores the predictions the live server logged against the landings that followed |
 | `train_runway.py` | Landing/takeoff runway classifiers, scored against "most-used runway" |
 | `scripts/build_aircraft_db.py` | Downloads the aircraft DB and the OpenFlights airline list into `data/` |
 | `poll_logan.py` | Retired OpenSky poller; its OAuth2 code will be reused for nightly arrival checks |
@@ -412,13 +413,46 @@ for, or low near, another airport. Checked on real arrivals, it drops 0% at Heat
 0.2% at Logan and 1.5% at JFK, where a curved approach and LaGuardia's parallel
 runway headings make it harder.
 
+## Scoring the live predictions
+
+The training scores test the model on past days. `python score_predictions.py ICAO`
+tests what the live server actually said, before each landing. It reads the
+predictions out of the logs, finds the real landings in the same logs with
+`events.py` (96-97% recall, 100% precision against OpenSky), and compares the two.
+`scripts/overnight.sh` runs it for every airport at the end. Report:
+`data/scores/ICAO.json`.
+
+First results (Logan Nov 18-19, about 31 hours; JFK and Heathrow 8 hours each on Nov 19;
+one prediction per plane every 30 s):
+
+| | Landing time | Straight line | 5 / 10 / 20 min out | Likely range held | Landing runway | Real landings missed |
+| --- | --- | --- | --- | --- | --- | --- |
+| Logan | **0.83 min** | 4.59 | 0.23 / 0.70 / 1.34 | 75% | 99.1% | 2.3% |
+| JFK | **0.80 min** | 3.29 | 0.26 / 0.77 / 1.46 | 62% | 92.9% | 0% |
+| Heathrow | **1.06 min** | 4.19 | 0.15 / 0.70 / 2.26 | 83% | 97.0% | 0% |
+
+"Missed" = landed without a prediction at least 5 minutes before. For planes that
+really were arriving, live accuracy is as good as the held-out test or better. JFK's
+range is too narrow live (62%, aim 80%); a few hours of data isn't enough to recalibrate it yet.
+
+**The real weakness: deciding who is arriving.** Many planes got a prediction and
+never landed: 342 at Logan, 808 at JFK, 507 at Heathrow, against 275 / 191 / 302 that
+did. That's 26%, 59% and 37% of all predictions. Most get their first prediction
+20-40 nm out and were really going to a neighbour: Bedford, Providence and Manchester
+near Boston; Newark, Islip, Teterboro and LaGuardia near JFK; Gatwick, London City
+and Luton near Heathrow. Others were light aircraft (under 140 kt) or just passing
+through. The arrival gate only catches them near the end, when they line up for the
+other airport. The training data never showed this problem, because it only contains
+planes that did land. Next step: an "is it landing here?" model trained on history,
+with every plane that came within 40 nm, landed or not.
+
 ## Roadmap
 
 1. Repo hygiene
 2. React + TypeScript frontend: aircraft list, detail panel
 3. "Ask Flive": chat over the live state using a local LLM with tool calling
 4. Arrival/departure detection per flight (runway, touchdown/liftoff time) - done (offline, `events.py`)
-5. Landing-time model: predicted landing times and order vs. actual - model and live predictions done; nightly scoring next
+5. Landing-time model: predicted landing times and order vs. actual - model, live predictions and scoring of live predictions done; "is it landing here?" next
 6. Always-on deployment
 
 ## Data

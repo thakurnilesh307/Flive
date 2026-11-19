@@ -35,3 +35,7 @@ data/eta_*
 data/runway_*
 # Log of scripts/overnight.sh
 data/overnight.log
+# Live prediction scores (score_predictions.py)
+data/scores/
+# Logs from a duplicate server, kept out of training and scoring
+data/duplicate_logs/

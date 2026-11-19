@@ -4,7 +4,7 @@
 # 1. imports every day in the range for all prediction airports (already-imported
 #    airport/days are skipped), 2. rebuilds datasets and retrains each airport's
 #    landing-time and runway models, 3. retrains the global model, 4. re-scores the
-#    landing detector against OpenSky. Each script only saves at the end, so a failed
+#    landing detector against OpenSky, 5. scores the live predictions in the logs. Each script only saves at the end, so a failed
 #    step leaves the previous model in place. Log: data/overnight.log
 cd "$(dirname "$0")/.." || exit 1
 LOG=data/overnight.log
@@ -36,5 +36,9 @@ python global_model.py 2>&1 | grep -vE "^  " | tee -a "$LOG"
 for a in KBOS KJFK EGLL; do
   say "validate $a"
   python scripts/validate_events.py $a 2>&1 | grep -E "arrivals in|Recall|Precision|median" | tee -a "$LOG"
+done
+for a in KBOS KJFK EGLL; do
+  say "score live predictions $a"
+  python score_predictions.py $a 2>&1 | grep -vE "^  20[0-9]{2}-" | tee -a "$LOG"
 done
 say "OVERNIGHT DONE"
