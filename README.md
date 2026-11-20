@@ -570,10 +570,31 @@ with up to 1, 2, 3 places):
   in its busiest hours. That is mostly the holding-stack buffer, which Heathrow keeps
   on purpose so the runway never waits.
 
+**Letting the optimizer choose runways.** Each plane may also move to another
+runway that, at that moment, was really being used mainly for landings (at least 2
+landings within 20 minutes, departures no more than half of them) and that its size
+class really uses; its earliest landing changes with the runway's approach path.
+Greedy: planes in order of earliest landing, each to the runway where it can land
+first, then the position-shift optimizer per runway. (A first try allowed any runway
+with a couple of landings and "won" by landing arrivals on departure runways, JFK
+31L and Heathrow 09R, so the departure check matters.)
+
+| 40+ landings/h | Real (minus floor) | Optimizer, own runway | Optimizer + runway choice | Arrivals moved |
+| --- | --- | --- | --- | --- |
+| Logan | 3.0 | 3.6 | **2.7** | 6.7% |
+| JFK | **1.5** | 2.9 | 3.0 | 1.9% |
+| Heathrow | 5.4 | 3.5 | **3.4** | 0.9% |
+
+Runway choice explains Logan: with it, the optimizer edges out the real controllers.
+It doesn't explain JFK, whose arrival runways are already used to the full. What's
+left there is either real skill the replay can't model (tighter gaps in a rush,
+dependent runway operations) or a weakness of the comparison: JFK's quiet-hour floor
+(1.5 min) may not apply to busy hours if quiet-hour approaches are longer by design.
+This data can't tell those apart.
+
 Caveat on the comparison: the quiet-hour floor assumes non-sequencing delay (routes,
 slower planes) is the same in busy hours, and the runway pace comes from medians, so
-controllers squeezing tighter in a rush looks like skill here. Next: let the
-optimizer reassign arrivals between the runways in use.
+controllers squeezing tighter in a rush looks like skill here.
 
 ## The transfer controller: one model for any airport
 
@@ -637,7 +658,7 @@ to local features once a few days of local data exist.
 3. "Ask Flive": chat over the live state using a local LLM with tool calling
 4. Arrival/departure detection per flight (runway, touchdown/liftoff time) - done (offline, `events.py`)
 5. Landing-time model: predicted landing times and order vs. actual - model, live predictions, scoring of live predictions and the "is it landing here?" classifier done
-6. Time lost on arrival (`time_lost.py`, done); first come, first served replay and position-shift optimizer (`scheduler.py`, done); runway reassignment next
+6. Time lost on arrival (`time_lost.py`, done); first come, first served replay and position-shift optimizer and runway choice (`scheduler.py`, done)
 7. A generic "transfer controller" model: tested (`transfer.py`): landing time transfers from day one, "is it landing here?" needs ~3 days of local data; settling-in hybrid next
 8. Always-on deployment
 

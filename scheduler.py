@@ -38,6 +38,7 @@ import numpy as np
 import pandas as pd
 
 import airport_geo as G
+import events as E
 
 HERE = Path(__file__).resolve().parent
 IN = HERE / "data" / "time_lost"
@@ -157,6 +158,83 @@ def optimise(arr, sep, k):
     return out
 
 
+UNIMPEDED_PCT = 20
+UNIMPEDED_MIN_GROUP = 20
+IN_USE_WINDOW_S = 20 * 60    # a runway counts as "in use for arrivals" with real landings this close
+IN_USE_MIN_LANDINGS = 2
+SIZE_MIN_LANDINGS = 20       # a size class may only go to runways it really used this often
+MAX_DEP_PER_ARR = 0.5        # ...and only to runways mainly landing at the time (departures <= half arrivals)
+
+
+def takeoffs(ap):
+    """Real takeoff times per runway (cached; detection over all history takes a minute)."""
+    OUT.mkdir(parents=True, exist_ok=True)
+    path = OUT / f"{ap.icao}_takeoffs.csv"
+    if not path.exists():
+        tracks, windows, *_ = E.load_all(ap)
+        evs, _ = E.detect(tracks, windows, ap)
+        pd.DataFrame([e for e in evs if e["kind"] == "takeoff"])[["icao24", "time", "runway"]].to_csv(path, index=False)
+    dep = pd.read_csv(path)
+    return {rw: np.sort(g.time.to_numpy()) for rw, g in dep.groupby("runway")}
+
+
+def unimpeded_lookup(arr):
+    """(sector, runway, size) -> unimpeded transit (min), with the same fallbacks as time_lost."""
+    levels = [("sector", "runway", "size"), ("sector", "runway"), ("runway",)]
+    tables = [arr.groupby(list(cols)).transit_min.agg(["size", lambda v: np.percentile(v, UNIMPEDED_PCT)])
+              for cols in levels]
+
+    def get(sector, runway, size):
+        keys = [(sector, runway, size), (sector, runway), runway]
+        for i, (t, key) in enumerate(zip(tables, keys)):
+            if key in t.index and (t.loc[key, "size"] >= UNIMPEDED_MIN_GROUP or i == len(tables) - 1):
+                return float(t.loc[key].iloc[1])
+        return None
+    return get
+
+
+def with_runway_choice(arr, sep, deps):
+    """Copy of arr where each plane may switch to another runway that was really in use
+    mainly for arrivals at the time (`deps`: real takeoff times per runway) and that its
+    size class really uses; the earliest landing
+    changes with the runway (different approach path). Greedy: planes in order of their
+    earliest possible landing, each to the runway where it can land first."""
+    get = unimpeded_lookup(arr)
+    landed = {rw: np.sort(g.touchdown.to_numpy()) for rw, g in arr.groupby("runway")}
+    sizes_ok = arr.groupby(["runway", "size"]).size()
+    cand_rows = []
+    for idx, r in arr.iterrows():
+        options = {r.runway: r.earliest}
+        for rw, t in landed.items():
+            if rw == r.runway or sizes_ok.get((rw, r["size"]), 0) < SIZE_MIN_LANDINGS:
+                continue
+            lo, hi = r.earliest - IN_USE_WINDOW_S, r.earliest + IN_USE_WINDOW_S
+            n = np.searchsorted(t, hi) - np.searchsorted(t, lo)
+            d = deps.get(rw, np.array([]))
+            n_dep = np.searchsorted(d, hi) - np.searchsorted(d, lo)
+            if n >= IN_USE_MIN_LANDINGS and n_dep <= MAX_DEP_PER_ARR * n:
+                u = get(r.sector, rw, r["size"])
+                if u is not None:
+                    options[rw] = r.crossing + u * 60
+        cand_rows.append((min(options.values()), idx, options))
+    last = {}   # runway -> (time, size)
+    new_rw, new_e = {}, {}
+    for _, idx, options in sorted(cand_rows, key=lambda x: x[0]):
+        size = arr.at[idx, "size"]
+        best = None
+        for rw, e in options.items():
+            t = _land(*(last.get(rw, (None, None))), e, size, {(a, b): sep[(rw, a, b)] for a in SIZES for b in SIZES})
+            if best is None or t < best[0] - 1e-9:
+                best = (t, rw, e)
+        last[best[1]] = (best[0], size)
+        new_rw[idx], new_e[idx] = best[1], best[2]
+    out = arr.copy()
+    out["runway"] = pd.Series(new_rw)
+    out["earliest"] = pd.Series(new_e)
+    out["fcfs_landing"] = fcfs(out, sep)
+    return out
+
+
 def run(icao):
     ap = G.get(icao)
     arr = pd.read_csv(IN / f"{icao}.csv")
@@ -168,6 +246,12 @@ def run(icao):
     arr["fcfs_delay_min"] = (arr.fcfs_landing - arr.earliest) / 60
     for k in SHIFTS:
         arr[f"cps{k}_delay_min"] = (optimise(arr, sep, k) - arr.earliest) / 60
+    # Runway choice: delay still measured against the earliest landing on the REAL
+    # runway, so a longer approach to another runway counts against it.
+    alt = with_runway_choice(arr, sep, takeoffs(ap))
+    arr["rwy_fcfs_delay_min"] = (alt.fcfs_landing - arr.earliest) / 60
+    arr["rwy_cps3_delay_min"] = (optimise(alt, sep, 3) - arr.earliest) / 60
+    switched = float((alt.runway != arr.runway).mean() * 100)
     arr["hour"] = [datetime.fromtimestamp(t, ap.tz).strftime("%Y-%m-%d %H:00") for t in arr.earliest]
 
     hours = arr.groupby("hour").agg(landings=("icao24", "size"), real_min=("real_delay_min", "mean"),
@@ -181,7 +265,9 @@ def run(icao):
                 "fcfs_mean_min": round(float(d.fcfs_delay_min.mean()), 2),
                 "real_over_5_pct": round(float((d.real_delay_min > 5).mean() * 100), 1),
                 "fcfs_over_5_pct": round(float((d.fcfs_delay_min > 5).mean() * 100), 1),
-                **{f"cps{k}_mean_min": round(float(d[f"cps{k}_delay_min"].mean()), 2) for k in SHIFTS}}
+                **{f"cps{k}_mean_min": round(float(d[f"cps{k}_delay_min"].mean()), 2) for k in SHIFTS},
+                "runway_choice_fcfs_mean_min": round(float(d.rwy_fcfs_delay_min.mean()), 2),
+                "runway_choice_cps3_mean_min": round(float(d.rwy_cps3_delay_min.mean()), 2)}
 
     busy = hours.landings.clip(upper=49) // 10 * 10
     by_busy = {}
@@ -202,6 +288,7 @@ def run(icao):
         "busy_hours_real_beats_fcfs_pct": round(float((busy_h.real_min < busy_h.fcfs_min).mean() * 100), 1)
         if len(busy_h) else None,
         "fcfs_max_delay_min": round(float(arr.fcfs_delay_min.max()), 1),
+        "runway_choice_switched_pct": round(switched, 1),
     }
     (OUT / f"{icao}.json").write_text(json.dumps(report, indent=1))
     o = report["overall"]
@@ -211,7 +298,9 @@ def run(icao):
           f"FCFS worst {report['fcfs_max_delay_min']} min")
     for k, v in by_busy.items():
         print(f"  {k} landings/h ({v['hours']} h): real {v['real_mean_min']} vs FCFS {v['fcfs_mean_min']} vs "
-              + " ".join(f"CPS{s} {v[f'cps{s}_mean_min']}" for s in SHIFTS))
+              + " ".join(f"CPS{s} {v[f'cps{s}_mean_min']}" for s in SHIFTS)
+              + f" | runway choice: FCFS {v['runway_choice_fcfs_mean_min']} CPS3 {v['runway_choice_cps3_mean_min']}")
+    print(f"  runway choice moved {report['runway_choice_switched_pct']}% of arrivals to another runway")
     print(f"  busy hours (30+ landings): real beats FCFS in {report['busy_hours_real_beats_fcfs_pct']}% of {len(busy_h)}")
 
 

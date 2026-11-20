@@ -167,7 +167,11 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   (delay, last time)); brute-force checked; per runway split where FCFS queue
   empties; SHIFTS = 1,2,3. Busy hours: CPS cuts FCFS 15-25%, but real KBOS/KJFK
   still beat CPS-3 (runway choice, compression); EGLL ~2 min room (stacks).
-  Next: let the optimizer reassign runways.
+  Runway choice (with_runway_choice): may move to a runway with >= 2 real landings
+  within 20 min and departures <= half of them (takeoffs() cached in
+  data/scheduler/ICAO_takeoffs.csv), size class used it >= 20 times; greedy then
+  CPS-3. Without the departure check it dumped arrivals on JFK 31L / EGLL 09R.
+  40+ h: KBOS 2.7 (beats real 3.0), KJFK 3.0 (real 1.5 unexplained), EGLL 3.4.
 - `transfer.py [eta] [arrival]` - "transfer controller": generic features (no
   bearing/track/cfg_*/alt_ft) trained on the other airports + first k days of the
   target vs local expert on first k days; test = target's last 10 days. Caches
