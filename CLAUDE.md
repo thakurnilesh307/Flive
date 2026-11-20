@@ -23,6 +23,11 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   Raises `RateLimited` on 429. Provider is set by `ADSB_URL` / `ADSB_API_KEY`.
   `poll_hex(icao24)` = one aircraft (adsb.fi /v2/hex/, or `ADSB_HEX_URL`; off for a
   custom ADSB_URL without it), same throttle.
+- Results page: frontend/results.html + src/results/ (Results.tsx, charts.tsx:
+  hand-made SVG LineChart / GroupedBars / DataTable, results.css tokens --s1..--s4
+  validated per theme). Data: frontend/public/results.json from
+  scripts/export_results.py (re-run after time_lost/scheduler/transfer). Vite has
+  3 inputs (main, about, results). Linked from TopBar and About.
 - Follow fast lane: page sends {"type":"follow","icao24"} (App: follow && selected);
   server.follow_poller polls followed planes every 2 s (round robin, max 4) and
   sends {"type":"track"} to followers. useLiveFeed merges position fields into

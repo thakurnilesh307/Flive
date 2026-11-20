@@ -1,0 +1,731 @@
+{
+ "generated": "2026-11-20",
+ "airports": [
+  {
+   "icao": "KBOS",
+   "name": "Logan"
+  },
+  {
+   "icao": "KJFK",
+   "name": "JFK"
+  },
+  {
+   "icao": "EGLL",
+   "name": "Heathrow"
+  }
+ ],
+ "time_lost": {
+  "KBOS": {
+   "days": [
+    "2026-10-31",
+    "2026-11-19"
+   ],
+   "flights": 9181,
+   "mean_min": 2.66,
+   "median_min": 1.38,
+   "over_5_pct": 17.2,
+   "holding_pct": 3.6,
+   "total_hours": 407.1,
+   "by_traffic": [
+    {
+     "bucket": "0-9",
+     "mean_min": 0.85,
+     "flights": 323
+    },
+    {
+     "bucket": "10-19",
+     "mean_min": 0.84,
+     "flights": 777
+    },
+    {
+     "bucket": "20-29",
+     "mean_min": 2.03,
+     "flights": 3394
+    },
+    {
+     "bucket": "30-39",
+     "mean_min": 3.5,
+     "flights": 4104
+    },
+    {
+     "bucket": "40+",
+     "mean_min": 3.8,
+     "flights": 583
+    }
+   ],
+   "by_hour": [
+    {
+     "hour": 0,
+     "mean_min": 1.66,
+     "flights": 185
+    },
+    {
+     "hour": 1,
+     "mean_min": 0.61,
+     "flights": 67
+    },
+    {
+     "hour": 2,
+     "mean_min": 0.72,
+     "flights": 22
+    },
+    {
+     "hour": 4,
+     "mean_min": 1.07,
+     "flights": 67
+    },
+    {
+     "hour": 5,
+     "mean_min": 0.9,
+     "flights": 114
+    },
+    {
+     "hour": 6,
+     "mean_min": 0.51,
+     "flights": 218
+    },
+    {
+     "hour": 7,
+     "mean_min": 1.36,
+     "flights": 330
+    },
+    {
+     "hour": 8,
+     "mean_min": 2.29,
+     "flights": 467
+    },
+    {
+     "hour": 9,
+     "mean_min": 2.51,
+     "flights": 517
+    },
+    {
+     "hour": 10,
+     "mean_min": 2.61,
+     "flights": 496
+    },
+    {
+     "hour": 11,
+     "mean_min": 2.87,
+     "flights": 457
+    },
+    {
+     "hour": 12,
+     "mean_min": 2.06,
+     "flights": 435
+    },
+    {
+     "hour": 13,
+     "mean_min": 3.37,
+     "flights": 625
+    },
+    {
+     "hour": 14,
+     "mean_min": 4.69,
+     "flights": 647
+    },
+    {
+     "hour": 15,
+     "mean_min": 2.52,
+     "flights": 596
+    },
+    {
+     "hour": 16,
+     "mean_min": 2.28,
+     "flights": 582
+    },
+    {
+     "hour": 17,
+     "mean_min": 3.68,
+     "flights": 552
+    },
+    {
+     "hour": 18,
+     "mean_min": 3.55,
+     "flights": 544
+    },
+    {
+     "hour": 19,
+     "mean_min": 4.22,
+     "flights": 567
+    },
+    {
+     "hour": 20,
+     "mean_min": 2.43,
+     "flights": 418
+    },
+    {
+     "hour": 21,
+     "mean_min": 1.69,
+     "flights": 468
+    },
+    {
+     "hour": 22,
+     "mean_min": 1.1,
+     "flights": 368
+    },
+    {
+     "hour": 23,
+     "mean_min": 2.1,
+     "flights": 434
+    }
+   ]
+  },
+  "KJFK": {
+   "days": [
+    "2026-10-31",
+    "2026-11-19"
+   ],
+   "flights": 9371,
+   "mean_min": 2.2,
+   "median_min": 1.48,
+   "over_5_pct": 11.9,
+   "holding_pct": 1.0,
+   "total_hours": 343.5,
+   "by_traffic": [
+    {
+     "bucket": "0-9",
+     "mean_min": 0.97,
+     "flights": 373
+    },
+    {
+     "bucket": "10-19",
+     "mean_min": 1.22,
+     "flights": 1437
+    },
+    {
+     "bucket": "20-29",
+     "mean_min": 2.09,
+     "flights": 3195
+    },
+    {
+     "bucket": "30-39",
+     "mean_min": 2.64,
+     "flights": 3826
+    },
+    {
+     "bucket": "40+",
+     "mean_min": 3.22,
+     "flights": 540
+    }
+   ],
+   "by_hour": [
+    {
+     "hour": 0,
+     "mean_min": 1.74,
+     "flights": 245
+    },
+    {
+     "hour": 1,
+     "mean_min": 0.73,
+     "flights": 96
+    },
+    {
+     "hour": 2,
+     "mean_min": 1.06,
+     "flights": 84
+    },
+    {
+     "hour": 3,
+     "mean_min": 1.16,
+     "flights": 53
+    },
+    {
+     "hour": 4,
+     "mean_min": 0.56,
+     "flights": 148
+    },
+    {
+     "hour": 5,
+     "mean_min": 0.58,
+     "flights": 234
+    },
+    {
+     "hour": 6,
+     "mean_min": 1.45,
+     "flights": 394
+    },
+    {
+     "hour": 7,
+     "mean_min": 1.95,
+     "flights": 466
+    },
+    {
+     "hour": 8,
+     "mean_min": 2.78,
+     "flights": 445
+    },
+    {
+     "hour": 9,
+     "mean_min": 1.41,
+     "flights": 349
+    },
+    {
+     "hour": 10,
+     "mean_min": 1.77,
+     "flights": 345
+    },
+    {
+     "hour": 11,
+     "mean_min": 1.5,
+     "flights": 301
+    },
+    {
+     "hour": 12,
+     "mean_min": 1.88,
+     "flights": 477
+    },
+    {
+     "hour": 13,
+     "mean_min": 2.07,
+     "flights": 567
+    },
+    {
+     "hour": 14,
+     "mean_min": 2.28,
+     "flights": 585
+    },
+    {
+     "hour": 15,
+     "mean_min": 2.71,
+     "flights": 616
+    },
+    {
+     "hour": 16,
+     "mean_min": 2.26,
+     "flights": 502
+    },
+    {
+     "hour": 17,
+     "mean_min": 2.95,
+     "flights": 575
+    },
+    {
+     "hour": 18,
+     "mean_min": 2.95,
+     "flights": 618
+    },
+    {
+     "hour": 19,
+     "mean_min": 2.45,
+     "flights": 487
+    },
+    {
+     "hour": 20,
+     "mean_min": 3.07,
+     "flights": 547
+    },
+    {
+     "hour": 21,
+     "mean_min": 2.68,
+     "flights": 486
+    },
+    {
+     "hour": 22,
+     "mean_min": 2.3,
+     "flights": 408
+    },
+    {
+     "hour": 23,
+     "mean_min": 1.84,
+     "flights": 343
+    }
+   ]
+  },
+  "EGLL": {
+   "days": [
+    "2026-11-01",
+    "2026-11-19"
+   ],
+   "flights": 10863,
+   "mean_min": 4.45,
+   "median_min": 2.99,
+   "over_5_pct": 36.1,
+   "holding_pct": 35.2,
+   "total_hours": 805.1,
+   "by_traffic": [
+    {
+     "bucket": "0-9",
+     "mean_min": 1.42,
+     "flights": 169
+    },
+    {
+     "bucket": "10-19",
+     "mean_min": 0.52,
+     "flights": 263
+    },
+    {
+     "bucket": "20-29",
+     "mean_min": 2.49,
+     "flights": 871
+    },
+    {
+     "bucket": "30-39",
+     "mean_min": 3.74,
+     "flights": 6891
+    },
+    {
+     "bucket": "40+",
+     "mean_min": 7.48,
+     "flights": 2669
+    }
+   ],
+   "by_hour": [
+    {
+     "hour": 4,
+     "mean_min": 1.54,
+     "flights": 94
+    },
+    {
+     "hour": 5,
+     "mean_min": 0.65,
+     "flights": 162
+    },
+    {
+     "hour": 6,
+     "mean_min": 6.21,
+     "flights": 656
+    },
+    {
+     "hour": 7,
+     "mean_min": 5.99,
+     "flights": 660
+    },
+    {
+     "hour": 8,
+     "mean_min": 6.66,
+     "flights": 652
+    },
+    {
+     "hour": 9,
+     "mean_min": 7.17,
+     "flights": 682
+    },
+    {
+     "hour": 10,
+     "mean_min": 5.43,
+     "flights": 683
+    },
+    {
+     "hour": 11,
+     "mean_min": 4.82,
+     "flights": 665
+    },
+    {
+     "hour": 12,
+     "mean_min": 6.33,
+     "flights": 694
+    },
+    {
+     "hour": 13,
+     "mean_min": 6.87,
+     "flights": 713
+    },
+    {
+     "hour": 14,
+     "mean_min": 4.15,
+     "flights": 670
+    },
+    {
+     "hour": 15,
+     "mean_min": 6.08,
+     "flights": 631
+    },
+    {
+     "hour": 16,
+     "mean_min": 3.18,
+     "flights": 653
+    },
+    {
+     "hour": 17,
+     "mean_min": 1.21,
+     "flights": 589
+    },
+    {
+     "hour": 18,
+     "mean_min": 3.21,
+     "flights": 660
+    },
+    {
+     "hour": 19,
+     "mean_min": 2.26,
+     "flights": 640
+    },
+    {
+     "hour": 20,
+     "mean_min": 0.81,
+     "flights": 535
+    },
+    {
+     "hour": 21,
+     "mean_min": 1.7,
+     "flights": 589
+    },
+    {
+     "hour": 22,
+     "mean_min": 0.77,
+     "flights": 222
+    }
+   ]
+  }
+ },
+ "scheduler": {
+  "KBOS": {
+   "quiet_floor_min": 0.84,
+   "by_traffic": [
+    {
+     "bucket": "20-29",
+     "hours": 131,
+     "real_min": 1.03,
+     "fcfs_min": 1.07,
+     "optimizer_min": 1.0,
+     "optimizer_runways_min": 0.81
+    },
+    {
+     "bucket": "30-39",
+     "hours": 114,
+     "real_min": 2.69,
+     "fcfs_min": 3.05,
+     "optimizer_min": 2.61,
+     "optimizer_runways_min": 2.32
+    },
+    {
+     "bucket": "40+",
+     "hours": 17,
+     "real_min": 2.99,
+     "fcfs_min": 4.46,
+     "optimizer_min": 3.6,
+     "optimizer_runways_min": 2.65
+    }
+   ],
+   "runway_choice_moved_pct": 6.7
+  },
+  "KJFK": {
+   "quiet_floor_min": 1.45,
+   "by_traffic": [
+    {
+     "bucket": "20-29",
+     "hours": 123,
+     "real_min": 0.59,
+     "fcfs_min": 1.63,
+     "optimizer_min": 1.31,
+     "optimizer_runways_min": 1.25
+    },
+    {
+     "bucket": "30-39",
+     "hours": 115,
+     "real_min": 1.17,
+     "fcfs_min": 3.42,
+     "optimizer_min": 2.5,
+     "optimizer_runways_min": 2.42
+    },
+    {
+     "bucket": "40+",
+     "hours": 14,
+     "real_min": 1.52,
+     "fcfs_min": 3.69,
+     "optimizer_min": 2.94,
+     "optimizer_runways_min": 2.98
+    }
+   ],
+   "runway_choice_moved_pct": 1.9
+  },
+  "EGLL": {
+   "quiet_floor_min": 1.6,
+   "by_traffic": [
+    {
+     "bucket": "20-29",
+     "hours": 29,
+     "real_min": 0.36,
+     "fcfs_min": 0.87,
+     "optimizer_min": 0.82,
+     "optimizer_runways_min": 0.8
+    },
+    {
+     "bucket": "30-39",
+     "hours": 187,
+     "real_min": 2.16,
+     "fcfs_min": 1.99,
+     "optimizer_min": 1.74,
+     "optimizer_runways_min": 1.72
+    },
+    {
+     "bucket": "40+",
+     "hours": 72,
+     "real_min": 5.39,
+     "fcfs_min": 3.98,
+     "optimizer_min": 3.45,
+     "optimizer_runways_min": 3.44
+    }
+   ],
+   "runway_choice_moved_pct": 0.9
+  }
+ },
+ "transfer": {
+  "KBOS": {
+   "straight_line_mae_min": 4.99,
+   "old_rule": {
+    "precision_pct": 73.0,
+    "recall_pct": 73.3,
+    "false_per_true": 0.37
+   },
+   "rows": [
+    {
+     "days": 0,
+     "eta_local": null,
+     "eta_transfer": 1.32,
+     "arr_local_precision": null,
+     "arr_local_recall": null,
+     "arr_transfer_precision": 98.4,
+     "arr_transfer_recall": 77.9
+    },
+    {
+     "days": 1,
+     "eta_local": 1.82,
+     "eta_transfer": 1.3,
+     "arr_local_precision": 96.9,
+     "arr_local_recall": 91.0,
+     "arr_transfer_precision": 98.3,
+     "arr_transfer_recall": 79.7
+    },
+    {
+     "days": 3,
+     "eta_local": 1.34,
+     "eta_transfer": 1.22,
+     "arr_local_precision": 97.0,
+     "arr_local_recall": 97.2,
+     "arr_transfer_precision": 98.0,
+     "arr_transfer_recall": 92.1
+    },
+    {
+     "days": 7,
+     "eta_local": 1.69,
+     "eta_transfer": 1.25,
+     "arr_local_precision": 97.3,
+     "arr_local_recall": 97.8,
+     "arr_transfer_precision": 97.9,
+     "arr_transfer_recall": 94.0
+    },
+    {
+     "days": 10,
+     "eta_local": 1.44,
+     "eta_transfer": null,
+     "arr_local_precision": 97.3,
+     "arr_local_recall": 98.6,
+     "arr_transfer_precision": null,
+     "arr_transfer_recall": null
+    }
+   ]
+  },
+  "KJFK": {
+   "straight_line_mae_min": 5.35,
+   "old_rule": {
+    "precision_pct": 44.4,
+    "recall_pct": 68.6,
+    "false_per_true": 1.25
+   },
+   "rows": [
+    {
+     "days": 0,
+     "eta_local": null,
+     "eta_transfer": 1.4,
+     "arr_local_precision": null,
+     "arr_local_recall": null,
+     "arr_transfer_precision": 64.5,
+     "arr_transfer_recall": 71.0
+    },
+    {
+     "days": 1,
+     "eta_local": 1.74,
+     "eta_transfer": 1.37,
+     "arr_local_precision": 85.8,
+     "arr_local_recall": 89.0,
+     "arr_transfer_precision": 74.0,
+     "arr_transfer_recall": 82.1
+    },
+    {
+     "days": 3,
+     "eta_local": 1.47,
+     "eta_transfer": 1.18,
+     "arr_local_precision": 97.5,
+     "arr_local_recall": 95.4,
+     "arr_transfer_precision": 87.7,
+     "arr_transfer_recall": 93.6
+    },
+    {
+     "days": 7,
+     "eta_local": 1.34,
+     "eta_transfer": 1.15,
+     "arr_local_precision": 97.6,
+     "arr_local_recall": 95.2,
+     "arr_transfer_precision": 88.8,
+     "arr_transfer_recall": 95.2
+    },
+    {
+     "days": 10,
+     "eta_local": 1.27,
+     "eta_transfer": null,
+     "arr_local_precision": 97.5,
+     "arr_local_recall": 96.8,
+     "arr_transfer_precision": null,
+     "arr_transfer_recall": null
+    }
+   ]
+  },
+  "EGLL": {
+   "straight_line_mae_min": 6.3,
+   "old_rule": {
+    "precision_pct": 66.7,
+    "recall_pct": 75.4,
+    "false_per_true": 0.5
+   },
+   "rows": [
+    {
+     "days": 0,
+     "eta_local": null,
+     "eta_transfer": 1.84,
+     "arr_local_precision": null,
+     "arr_local_recall": null,
+     "arr_transfer_precision": 84.8,
+     "arr_transfer_recall": 81.8
+    },
+    {
+     "days": 1,
+     "eta_local": 2.26,
+     "eta_transfer": 1.61,
+     "arr_local_precision": 97.5,
+     "arr_local_recall": 97.6,
+     "arr_transfer_precision": 91.6,
+     "arr_transfer_recall": 90.9
+    },
+    {
+     "days": 3,
+     "eta_local": 3.23,
+     "eta_transfer": 1.56,
+     "arr_local_precision": 97.7,
+     "arr_local_recall": 95.4,
+     "arr_transfer_precision": 92.8,
+     "arr_transfer_recall": 93.5
+    },
+    {
+     "days": 7,
+     "eta_local": 1.56,
+     "eta_transfer": 1.48,
+     "arr_local_precision": 98.1,
+     "arr_local_recall": 99.1,
+     "arr_transfer_precision": 95.9,
+     "arr_transfer_recall": 98.8
+    },
+    {
+     "days": 10,
+     "eta_local": null,
+     "eta_transfer": null,
+     "arr_local_precision": 98.2,
+     "arr_local_recall": 99.3,
+     "arr_transfer_precision": null,
+     "arr_transfer_recall": null
+    }
+   ]
+  }
+ }
+}

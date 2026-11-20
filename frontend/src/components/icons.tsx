@@ -44,6 +44,7 @@ export const MinusIcon = (p: P) => <Svg {...p}><path d="M5 12h14" /></Svg>;
 export const LocateIcon = (p: P) => <Svg {...p}><path d="M3 11 21 3l-8 18-2-8-8-2z" /></Svg>;
 export const ChevronIcon = (p: P) => <Svg {...p}><path d="m6 15 6-6 6 6" /></Svg>;
 export const SendIcon = (p: P) => <Svg {...p}><path d="M5 12h14M13 6l6 6-6 6" /></Svg>;
+export const ChartIcon = (p: P) => <Svg {...p}><path d="M4 20h16M7 16v-5M12 16V6M17 16v-8" /></Svg>;
 export const InfoIcon = (p: P) => <Svg {...p}><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></Svg>;
 export const SparkIcon = (p: P) => (
   <Svg {...p}><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /><path d="M19 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z" /></Svg>

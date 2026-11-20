@@ -63,6 +63,7 @@ export default function About() {
       <header className="about-top">
         <a className="about-brand" href="/"><Logo size={30} /><span>Flive</span></a>
         <nav className="about-top-links">
+          <a href="/results.html">Results</a>
           <a href={REPO} target="_blank" rel="noopener noreferrer">GitHub</a>
           <a className="btn-primary small" href="/">Back to the map</a>
         </nav>
@@ -384,6 +385,10 @@ export default function About() {
               Like I said at the top, Flive started with an idea for a runway scheduler, which plans the order planes land in
               kind of like air traffic control does. The real goal is to point that kind of model at actual Logan traffic and
               see how close it gets. The plan:
+            </p>
+            <p>
+              The findings so far, with charts, are on the <a href="/results.html">Results page</a>: how much time arrivals
+              lose, how real controllers compare with a scheduler, and whether one model can work at any airport.
             </p>
             <ol className="steps">
               <li>

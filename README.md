@@ -53,6 +53,20 @@ For frontend work with hot reload, keep the server running and in a second
 terminal run `cd frontend; npm run dev`, then open http://localhost:5173 (Vite
 forwards `/ws` to the server).
 
+## Results page
+
+`/results.html` ("Results" in the map's top bar) shows the findings below as charts:
+time lost per arrival (by traffic and by hour), real vs. first-come vs. optimizer,
+and the transfer-controller curves. Each chart has a hover readout, keyboard focus
+and a "Show the numbers" table. It reads `frontend/public/results.json` (12 KB,
+committed), so a deployed site needs none of the raw history. After re-running
+`time_lost.py`, `scheduler.py` or `transfer.py`:
+
+```powershell
+python scripts/export_results.py
+cd frontend; npm run build
+```
+
 ## Following a plane: the fast lane
 
 The map refreshes Logan every 5 s and JFK/Heathrow every 10 s. When you follow a
@@ -255,6 +269,7 @@ Coverage on a live check: 99% of worldwide aircraft got a type, 86% an operator.
 | `score_predictions.py` | Scores the predictions the live server logged against the landings that followed |
 | `arrival_model.py` | "Is it landing here?" classifier per airport, used live to decide who gets a prediction |
 | `time_lost.py` | Time each arrival loses inside 40 nm vs. comparable unimpeded flights |
+| `scripts/export_results.py` | Collects the analysis reports into `frontend/public/results.json` for the Results page |
 | `scheduler.py` | Replays real arrivals first come, first served and through an optimizer, and compares the delay with reality |
 | `transfer.py` | "Transfer controller" test: generic models on airports they never saw, plus days of local data |
 | `train_runway.py` | Landing/takeoff runway classifiers, scored against "most-used runway" |

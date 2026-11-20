@@ -8,10 +8,11 @@ export default defineConfig({
   plugins: [react()],
   build: {
     rolldownOptions: {
-      // Two pages: the live map and the About/docs page (no map code loaded there).
+      // Three pages: the live map, the About/docs page and the Results page (no map code on the last two).
       input: {
         main: resolve(import.meta.dirname, "index.html"),
         about: resolve(import.meta.dirname, "about.html"),
+        results: resolve(import.meta.dirname, "results.html"),
       },
     },
   },

@@ -1,4 +1,4 @@
-import { Logo, SearchIcon, CloseIcon, SparkIcon, InfoIcon, SunIcon, MoonIcon } from "./icons";
+import { Logo, SearchIcon, CloseIcon, SparkIcon, InfoIcon, SunIcon, MoonIcon, ChartIcon } from "./icons";
 import { localTime } from "../format";
 
 interface Props {
@@ -59,6 +59,9 @@ export default function TopBar({ query, onQuery, onSubmit, live, now, chatOpen, 
         >
           {theme === "dark" ? <SunIcon size={18} /> : <MoonIcon size={18} />}
         </button>
+        <a className="about-link" href="/results.html" aria-label="Results: model vs. reality">
+          <ChartIcon size={17} /><span>Results</span>
+        </a>
         <a className="about-link" href="/about.html" aria-label="About Flive">
           <InfoIcon size={17} /><span>About</span>
         </a>
