@@ -161,7 +161,13 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   size) -> airport pair -> default. Departures NOT modelled separately (pinning them
   starved 04R into 100-min queues; queued gaps already include them). Compare real
   minus quiet-hour floor vs FCFS: KBOS/KJFK real beats FCFS when busy, EGLL worse in
-  40+ hours (holding stacks). -> data/scheduler/ (gitignored). Next: optimizer (CPS).
+  40+ hours (holding stacks). -> data/scheduler/ (gitignored).
+  Optimizer: cps_sequence() exact DP for Constrained Position Shifting (max k
+  places, min total delay; state = used planes in window + last plane, Pareto on
+  (delay, last time)); brute-force checked; per runway split where FCFS queue
+  empties; SHIFTS = 1,2,3. Busy hours: CPS cuts FCFS 15-25%, but real KBOS/KJFK
+  still beat CPS-3 (runway choice, compression); EGLL ~2 min room (stacks).
+  Next: let the optimizer reassign runways.
 - `transfer.py [eta] [arrival]` - "transfer controller": generic features (no
   bearing/track/cfg_*/alt_ft) trained on the other airports + first k days of the
   target vs local expert on first k days; test = target's last 10 days. Caches

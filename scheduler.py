@@ -2,7 +2,8 @@
 
     python scheduler.py [ICAO ...]     (after time_lost.py) -> data/scheduler/ICAO.json + ICAO_hours.csv
 
-Step 2 of the scheduler story. Every arrival from time_lost.py has the moment it
+Step 2 and 3 of the scheduler story (first come, first served, then an optimizer
+that may move each plane up to k places: see cps_sequence). Every arrival from time_lost.py has the moment it
 crossed 40 nm and an *unimpeded* time to touchdown (what comparable flights take
 with nobody in the way), so its earliest possible landing = crossing + unimpeded.
 
@@ -49,6 +50,7 @@ SEP_DEFAULT = {("heavy", "heavy"): 105, ("heavy", "medium"): 150, ("heavy", "lig
 SEP_FALLBACK = 95
 SIZES = ("heavy", "medium", "light")
 QUIET_LANDINGS_HOUR = 10
+SHIFTS = (1, 2, 3)           # max places a plane may move from first-come order
 
 
 def spacing(arr):
@@ -86,6 +88,75 @@ def fcfs(arr, sep):
     return out
 
 
+def _land(prev_t, prev_size, e, size, sep_rw):
+    return e if prev_size is None else max(e, prev_t + sep_rw[(prev_size, size)])
+
+
+def cps_sequence(earliest, sizes, sep_rw, k):
+    """Optimal landing times for one busy period under Constrained Position Shifting:
+    planes are in first-come order (by earliest) and each may move at most k places
+    from it. Minimises total delay. Exact dynamic programme over positions: state =
+    (which planes within k of the current position are used, last plane), keeping
+    every (total delay, last landing time) pair that isn't beaten on both."""
+    n = len(earliest)
+    if k == 0 or n == 1:
+        out, pt, ps = [], None, None
+        for e, sz in zip(earliest, sizes):
+            pt = _land(pt, ps, e, sz, sep_rw)
+            ps = sz
+            out.append(pt)
+        return out
+    # state: (frozenset used indices >= m-k, last index) -> list of (delay, time, back-pointer)
+    states = {(frozenset(), -1): [(0.0, None, None)]}
+    history = []
+    for m in range(n):
+        nxt = {}
+        lo, hi = max(0, m - k), min(n - 1, m + k)
+        for (used, last), front in states.items():
+            must = m - k if m - k >= 0 and (m - k) not in used else None
+            choices = [must] if must is not None else [j for j in range(lo, hi + 1) if j not in used]
+            for j in choices:
+                nu = frozenset(x for x in used | {j} if x >= m + 1 - k)
+                key = (nu, j)
+                for fi, (d, t, _) in enumerate(front):
+                    tj = _land(t, sizes[last] if last >= 0 else None, earliest[j], sizes[j], sep_rw)
+                    cand = (d + tj - earliest[j], tj, ((used, last), fi, j))
+                    lst = nxt.setdefault(key, [])
+                    if any(c[0] <= cand[0] + 1e-9 and c[1] <= cand[1] + 1e-9 for c in lst):
+                        continue
+                    lst[:] = [c for c in lst if not (cand[0] <= c[0] + 1e-9 and cand[1] <= c[1] + 1e-9)]
+                    lst.append(cand)
+        history.append(nxt)
+        states = nxt
+    # best final state, then walk back
+    key, fi = min(((k_, i) for k_, f in states.items() for i in range(len(f))),
+                  key=lambda x: states[x[0]][x[1]][0])
+    out = [None] * n
+    for m in range(n - 1, -1, -1):
+        d, t, (pkey, pfi, j) = history[m][key][fi]
+        out[j] = t
+        key, fi = pkey, pfi
+    return out
+
+
+def optimise(arr, sep, k):
+    """CPS-k landing times per arrival. Each runway's stream is split where the
+    first-come queue empties (the runway sits idle), and each busy period is solved
+    exactly on its own."""
+    out = pd.Series(np.nan, index=arr.index)
+    for rw, g in arr.groupby("runway"):
+        g = g.sort_values("earliest")
+        sep_rw = {(a, b): sep[(rw, a, b)] for a in SIZES for b in SIZES}
+        idx, e, sz, f = list(g.index), g.earliest.to_list(), g["size"].to_list(), g.fcfs_landing.to_list()
+        start = 0
+        for i in range(1, len(idx) + 1):
+            if i == len(idx) or e[i] >= f[i - 1] + sep_rw[(sz[i - 1], sz[i])]:   # queue empty before i
+                times = cps_sequence(e[start:i], sz[start:i], sep_rw, k)
+                out[idx[start:i]] = times
+                start = i
+    return out
+
+
 def run(icao):
     ap = G.get(icao)
     arr = pd.read_csv(IN / f"{icao}.csv")
@@ -95,10 +166,13 @@ def run(icao):
     sep, ap_sep = spacing(arr)
     arr["fcfs_landing"] = fcfs(arr, sep)
     arr["fcfs_delay_min"] = (arr.fcfs_landing - arr.earliest) / 60
+    for k in SHIFTS:
+        arr[f"cps{k}_delay_min"] = (optimise(arr, sep, k) - arr.earliest) / 60
     arr["hour"] = [datetime.fromtimestamp(t, ap.tz).strftime("%Y-%m-%d %H:00") for t in arr.earliest]
 
     hours = arr.groupby("hour").agg(landings=("icao24", "size"), real_min=("real_delay_min", "mean"),
-                                    fcfs_min=("fcfs_delay_min", "mean")).reset_index()
+                                    fcfs_min=("fcfs_delay_min", "mean"),
+                                    **{f"cps{k}_min": (f"cps{k}_delay_min", "mean") for k in SHIFTS}).reset_index()
     OUT.mkdir(parents=True, exist_ok=True)
     hours.round(2).to_csv(OUT / f"{icao}_hours.csv", index=False)
 
@@ -106,7 +180,8 @@ def run(icao):
         return {"flights": int(len(d)), "real_mean_min": round(float(d.real_delay_min.mean()), 2),
                 "fcfs_mean_min": round(float(d.fcfs_delay_min.mean()), 2),
                 "real_over_5_pct": round(float((d.real_delay_min > 5).mean() * 100), 1),
-                "fcfs_over_5_pct": round(float((d.fcfs_delay_min > 5).mean() * 100), 1)}
+                "fcfs_over_5_pct": round(float((d.fcfs_delay_min > 5).mean() * 100), 1),
+                **{f"cps{k}_mean_min": round(float(d[f"cps{k}_delay_min"].mean()), 2) for k in SHIFTS}}
 
     busy = hours.landings.clip(upper=49) // 10 * 10
     by_busy = {}
@@ -135,7 +210,8 @@ def run(icao):
           f"vs FCFS {o['fcfs_mean_min']}; over 5 min: real {o['real_over_5_pct']}% vs FCFS {o['fcfs_over_5_pct']}%; "
           f"FCFS worst {report['fcfs_max_delay_min']} min")
     for k, v in by_busy.items():
-        print(f"  {k} landings/h ({v['hours']} h): real {v['real_mean_min']} vs FCFS {v['fcfs_mean_min']}")
+        print(f"  {k} landings/h ({v['hours']} h): real {v['real_mean_min']} vs FCFS {v['fcfs_mean_min']} vs "
+              + " ".join(f"CPS{s} {v[f'cps{s}_mean_min']}" for s in SHIFTS))
     print(f"  busy hours (30+ landings): real beats FCFS in {report['busy_hours_real_beats_fcfs_pct']}% of {len(busy_h)}")
 
 

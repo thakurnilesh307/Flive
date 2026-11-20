@@ -238,7 +238,7 @@ Coverage on a live check: 99% of worldwide aircraft got a type, 86% an operator.
 | `score_predictions.py` | Scores the predictions the live server logged against the landings that followed |
 | `arrival_model.py` | "Is it landing here?" classifier per airport, used live to decide who gets a prediction |
 | `time_lost.py` | Time each arrival loses inside 40 nm vs. comparable unimpeded flights |
-| `scheduler.py` | Replays real arrivals first come, first served and compares the delay with reality |
+| `scheduler.py` | Replays real arrivals first come, first served and through an optimizer, and compares the delay with reality |
 | `transfer.py` | "Transfer controller" test: generic models on airports they never saw, plus days of local data |
 | `train_runway.py` | Landing/takeoff runway classifiers, scored against "most-used runway" |
 | `scripts/build_aircraft_db.py` | Downloads the aircraft DB and the OpenFlights airline list into `data/` |
@@ -541,8 +541,39 @@ floor. Mean delay per arrival, minutes, by how busy the hour was:
 
 Limits: runways are fixed to the ones really used, dependent runways (crossing or
 close parallels) are treated as independent, and any delay can be absorbed. Report:
-`data/scheduler/ICAO.json`, per-hour `ICAO_hours.csv` (gitignored). Next: an
-optimizer that may reorder planes by up to 2-3 places, for the third column.
+`data/scheduler/ICAO.json`, per-hour `ICAO_hours.csv` (gitignored).
+
+**The optimizer.** The same replay, but each plane may move up to k places from
+first-come order (Constrained Position Shifting, the standard way to keep reordering
+realistic for controllers and fair to airlines), minimising total delay. It's solved
+exactly for each busy period with a dynamic programme over positions (checked
+against brute force on 300 random small cases), and takes seconds for all 20 days.
+
+Mean delay per arrival, minutes (real minus quiet-hour floor / naive / optimizer
+with up to 1, 2, 3 places):
+
+| Landings that hour | Logan | JFK | Heathrow |
+| --- | --- | --- | --- |
+| 20-29 | 1.0 / 1.1 / 1.0 / 1.0 / 1.0 | **0.6** / 1.6 / 1.4 / 1.3 / 1.3 | **0.4** / 0.9 / 0.9 / 0.8 / 0.8 |
+| 30-39 | 2.7 / 3.1 / 2.8 / 2.7 / **2.6** | **1.2** / 3.4 / 2.8 / 2.6 / 2.5 | 2.2 / 2.0 / 1.9 / 1.8 / **1.7** |
+| 40+ | **3.0** / 4.5 / 3.9 / 3.8 / 3.6 | **1.5** / 3.7 / 3.2 / 3.0 / 2.9 | 5.4 / 4.0 / 3.7 / 3.5 / **3.5** |
+
+- **Reordering helps**: 15-25% less delay than first-come in busy hours, mostly by
+  grouping heavy jets so fewer planes sit behind their bigger wake gaps. Most of the
+  gain comes from moving planes by one or two places.
+- **But real controllers at Logan and especially JFK beat even the optimizer.** They
+  have levers the replay doesn't: choosing and rebalancing runways (JFK lands on
+  several at once), squeezing gaps below their usual size in a rush, and running
+  dependent runways together. So reordering alone is not where their skill shows; the
+  next version should let the optimizer pick runways too.
+- **Heathrow is the one place an optimizer shows room**: about 2 minutes per arrival
+  in its busiest hours. That is mostly the holding-stack buffer, which Heathrow keeps
+  on purpose so the runway never waits.
+
+Caveat on the comparison: the quiet-hour floor assumes non-sequencing delay (routes,
+slower planes) is the same in busy hours, and the runway pace comes from medians, so
+controllers squeezing tighter in a rush looks like skill here. Next: let the
+optimizer reassign arrivals between the runways in use.
 
 ## The transfer controller: one model for any airport
 
@@ -606,7 +637,7 @@ to local features once a few days of local data exist.
 3. "Ask Flive": chat over the live state using a local LLM with tool calling
 4. Arrival/departure detection per flight (runway, touchdown/liftoff time) - done (offline, `events.py`)
 5. Landing-time model: predicted landing times and order vs. actual - model, live predictions, scoring of live predictions and the "is it landing here?" classifier done
-6. Time lost on arrival (`time_lost.py`, done); first come, first served replay (`scheduler.py`, done); optimized sequence next
+6. Time lost on arrival (`time_lost.py`, done); first come, first served replay and position-shift optimizer (`scheduler.py`, done); runway reassignment next
 7. A generic "transfer controller" model: tested (`transfer.py`): landing time transfers from day one, "is it landing here?" needs ~3 days of local data; settling-in hybrid next
 8. Always-on deployment
 
