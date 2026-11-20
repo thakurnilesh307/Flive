@@ -238,6 +238,7 @@ Coverage on a live check: 99% of worldwide aircraft got a type, 86% an operator.
 | `score_predictions.py` | Scores the predictions the live server logged against the landings that followed |
 | `arrival_model.py` | "Is it landing here?" classifier per airport, used live to decide who gets a prediction |
 | `time_lost.py` | Time each arrival loses inside 40 nm vs. comparable unimpeded flights |
+| `transfer.py` | "Transfer controller" test: generic models on airports they never saw, plus days of local data |
 | `train_runway.py` | Landing/takeoff runway classifiers, scored against "most-used runway" |
 | `scripts/build_aircraft_db.py` | Downloads the aircraft DB and the OpenFlights airline list into `data/` |
 | `poll_logan.py` | Retired OpenSky poller; its OAuth2 code will be reused for nightly arrival checks |
@@ -506,6 +507,61 @@ underestimate: when nearly every arrival queues, the 20th percentile "unimpeded"
 time already includes some queueing. Holding-like = at least 540 degrees of turning
 inside the ring.
 
+## The transfer controller: one model for any airport
+
+A controller moved from Boston to JFK brings general skills and needs only the
+layout and how the airport is running right now. `python transfer.py` tests whether
+a model can do the same. The generic models only get features measured relative to
+the airport and its live state (distance, height above the field, speed, descent,
+heading vs the airport, position relative to the runway in use, recent landings,
+time of day, glide path, closing rate, best-fitting neighbour) and none of what ties
+a model to one airport (compass bearing and track, runway names, altitude above sea
+level).
+
+For each airport in turn as the *new* airport: test on its last 10 days. The **local
+expert** (all features) trains on its first k days; the **transfer** model trains on
+the other two airports plus the new airport's first k days (k = 0 is day one on the
+job). Report: `data/models/TRANSFER_report.json`.
+
+**Landing time** (typical error, minutes):
+
+| Days of local data | Logan: local / transfer | JFK: local / transfer | Heathrow: local / transfer |
+| --- | --- | --- | --- |
+| 0 | - / **1.32** | - / **1.40** | - / **1.84** |
+| 1 | 1.82 / **1.30** | 1.74 / **1.37** | 2.26 / **1.61** |
+| 3 | 1.34 / **1.22** | 1.47 / **1.18** | 3.23 / **1.56** |
+| 7 | 1.69 / **1.25** | 1.34 / **1.15** | 1.56 / **1.48** |
+| 10 | 1.44 / - | 1.27 / - | - |
+
+**Is it landing here?** (predictions right / arrivals found):
+
+| Days of local data | Logan: local / transfer | JFK: local / transfer | Heathrow: local / transfer |
+| --- | --- | --- | --- |
+| 0 | - / 98% / 78% | - / 65% / 71% | - / 85% / 82% |
+| 1 | 97% / 91% vs 98% / 80% | 86% / 89% vs 74% / 82% | 98% / 98% vs 92% / 91% |
+| 3 | 97% / 97% vs 98% / 92% | **98% / 95%** vs 88% / 94% | 98% / 95% vs 93% / 94% |
+| 7 | 97% / 98% vs 98% / 94% | 98% / 95% vs 89% / 95% | 98% / 99% vs 96% / 99% |
+
+(Old hand-written rule on the same airports: 76% / 70%, 46% / 65%, 67% / 76%.)
+
+The two tasks go opposite ways:
+
+- **Landing time transfers.** From day one the generic model is about as good as a
+  local expert, and with 1-7 days of local data it beats every local expert: they
+  memorize the few days they saw (Heathrow's 3-day expert is off by 3.2 min), while
+  the other airports' data keeps the generic one steady. It's physics.
+- **"Is it landing here?" doesn't.** On day one at JFK a third of the generic model's
+  predictions go to planes landing elsewhere, and with the other airports' data it
+  stays below a local model trained on just 3 days. Who is coming to you depends on
+  the neighbourhood (where Newark, LaGuardia and Teterboro are and which way their
+  traffic flows), which is exactly the local knowledge stripped out to make the model
+  generic. New York, five busy airports close together, is the hardest case.
+
+So a controller from Boston could time landings at JFK on day one but would need
+about three days of watching to learn which planes belong to Newark, and the same
+holds for the models. Next: a "settling-in" hybrid that starts generic and switches
+to local features once a few days of local data exist.
+
 ## Roadmap
 
 1. Repo hygiene
@@ -514,7 +570,7 @@ inside the ring.
 4. Arrival/departure detection per flight (runway, touchdown/liftoff time) - done (offline, `events.py`)
 5. Landing-time model: predicted landing times and order vs. actual - model, live predictions, scoring of live predictions and the "is it landing here?" classifier done
 6. Time lost on arrival (`time_lost.py`, done), then a runway scheduler to compare against: first come first served vs. what really happened vs. optimized
-7. A generic "transfer controller" model: one model for any airport from its layout and live state, tested on airports it never saw
+7. A generic "transfer controller" model: tested (`transfer.py`): landing time transfers from day one, "is it landing here?" needs ~3 days of local data; settling-in hybrid next
 8. Always-on deployment
 
 ## Data

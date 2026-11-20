@@ -155,6 +155,12 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   over all history. -> data/time_lost/ICAO.csv/json (gitignored). 20 days: mean
   2.7 / 2.2 / 4.5 min KBOS/KJFK/EGLL; rises with landings per hour; EGLL 35%
   holding. Step 1 of the scheduler story (FCFS vs real vs optimized next).
+- `transfer.py [eta] [arrival]` - "transfer controller": generic features (no
+  bearing/track/cfg_*/alt_ft) trained on the other airports + first k days of the
+  target vs local expert on first k days; test = target's last 10 days. Caches
+  data/models/ICAO_arrival_dataset.csv.gz; -> TRANSFER_report.json. Result: ETA
+  transfers (beats local experts at 1-7 days); arrival classification doesn't
+  (JFK day 0: 65% precision; local 3 days: 98%). Next: settling-in hybrid.
 - `events.py` - step 4 (done, offline): logs -> landing/takeoff events with
   runway (`data/events_ICAO.csv`, gitignored). Despike ground flags (airborne blips
   first), confirm 60 s, runway by heading <= 25 deg AND <= 0.35 nm from the
