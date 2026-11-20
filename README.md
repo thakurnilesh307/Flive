@@ -1,9 +1,9 @@
 # Flive
 
 Live air traffic around Boston Logan (KBOS) on a dark web map, with a live
-arrivals/departures list and per-aircraft details. It grew out of an earlier Python ATC runway-scheduling simulator; the goal
-is to compare a scheduler's predicted landing sequence against what actually
-happens at Logan.
+arrivals/departures list and per-aircraft details. The goal is to compare what
+actually happens at Logan with an optimized landing sequence: how much time
+arrivals lose, and how much of it a scheduler could win back.
 
 > Work in progress. See the roadmap below.
 
@@ -230,6 +230,8 @@ Coverage on a live check: 99% of worldwide aircraft got a type, 86% an operator.
 | `global_model.py` | Rough landing-time model for any airport (worldwide feed), tested on unseen areas |
 | `scripts/overnight.sh` | Unattended run: import more history, retrain every model, re-validate, score |
 | `score_predictions.py` | Scores the predictions the live server logged against the landings that followed |
+| `arrival_model.py` | "Is it landing here?" classifier per airport, used live to decide who gets a prediction |
+| `time_lost.py` | Time each arrival loses inside 40 nm vs. comparable unimpeded flights |
 | `train_runway.py` | Landing/takeoff runway classifiers, scored against "most-used runway" |
 | `scripts/build_aircraft_db.py` | Downloads the aircraft DB and the OpenFlights airline list into `data/` |
 | `poll_logan.py` | Retired OpenSky poller; its OAuth2 code will be reused for nightly arrival checks |
@@ -446,14 +448,68 @@ other airport. The training data never showed this problem, because it only cont
 planes that did land. Next step: an "is it landing here?" model trained on history,
 with every plane that came within 40 nm, landed or not.
 
+**The fix: `arrival_model.py`.** A per-airport classifier trained on every plane
+within 40 nm and below 18,000 ft above the field, one row per minute, labelled by
+whether it landed here within the hour. Features: the landing-time features, glide
+path and runway alignment here, whether it's closing on the airport over the last
+two minutes, the same for the best-fitting neighbouring airport, and whether the
+callsign looks like an airline flight. Tested leave-days-out against the old rule on
+the same rows; the threshold is set so it finds at least as many arrivals as the rule.
+
+| | Old rule: right / found | Model: right / found | Wrong predictions per real arrival |
+| --- | --- | --- | --- |
+| Logan | 76% / 70% | **99% / 90%** | 0.32 -> 0.01 |
+| JFK | 46% / 65% | **99% / 95%** | 1.17 -> 0.01 |
+| Heathrow | 67% / 76% | **99% / 96%** | 0.50 -> 0.01 |
+
+The live server uses it at all three airports (and falls back to the rule without a
+model file). Live re-scoring follows once there are enough new logs.
+
+## Time lost on arrival
+
+The goal is to compare real arrivals with an optimized landing sequence. Before
+building a scheduler, `python time_lost.py ICAO` measures how much time real arrivals
+lose, using the idea behind EUROCONTROL's "additional ASMA time": for every landing,
+the time from crossing 40 nm to touchdown, minus an *unimpeded* time for comparable
+flights (same entry direction in 45-degree sectors, same landing runway, same size
+class) = the 20th percentile of their transit times. What's left is holding,
+vectoring and slowing down for sequencing. Report: `data/time_lost/ICAO.json`, one
+row per landing in `ICAO.csv` (both gitignored). It's our version on public data,
+not the official figure.
+
+20 days of history (Oct 31 - Nov 19), 9-11 thousand landings per airport:
+
+| | Mean lost | Median | 90th pct | Lose over 5 min | Holding-like turns | Total |
+| --- | --- | --- | --- | --- | --- | --- |
+| Logan | 2.7 min | 1.4 | 7.1 | 17% | 4% | 407 h |
+| JFK | 2.2 min | 1.5 | 5.4 | 12% | 1% | 344 h |
+| Heathrow | 4.5 min | 3.0 | 11.2 | 36% | 35% | 805 h |
+
+Time lost grows with how busy the hour is (landings within 30 minutes either side):
+
+| Landings that hour | 0-9 | 10-19 | 20-29 | 30-39 | 40+ |
+| --- | --- | --- | --- | --- | --- |
+| Logan | 0.9 | 0.8 | 2.0 | 3.5 | 3.8 |
+| JFK | 1.0 | 1.2 | 2.1 | 2.6 | 3.2 |
+| Heathrow | 1.4 | 0.5 | 2.5 | 3.7 | 7.5 |
+
+Heathrow is the outlier, by design: about a third of its arrivals fly a holding
+pattern, because it keeps a queue in the stacks so the runway never sits idle. Logan
+and JFK mostly absorb delay with vectors and speed. Heathrow's number is also an
+underestimate: when nearly every arrival queues, the 20th percentile "unimpeded"
+time already includes some queueing. Holding-like = at least 540 degrees of turning
+inside the ring.
+
 ## Roadmap
 
 1. Repo hygiene
 2. React + TypeScript frontend: aircraft list, detail panel
 3. "Ask Flive": chat over the live state using a local LLM with tool calling
 4. Arrival/departure detection per flight (runway, touchdown/liftoff time) - done (offline, `events.py`)
-5. Landing-time model: predicted landing times and order vs. actual - model, live predictions and scoring of live predictions done; "is it landing here?" next
-6. Always-on deployment
+5. Landing-time model: predicted landing times and order vs. actual - model, live predictions, scoring of live predictions and the "is it landing here?" classifier done
+6. Time lost on arrival (`time_lost.py`, done), then a runway scheduler to compare against: first come first served vs. what really happened vs. optimized
+7. A generic "transfer controller" model: one model for any airport from its layout and live state, tested on airports it never saw
+8. Always-on deployment
 
 ## Data
 

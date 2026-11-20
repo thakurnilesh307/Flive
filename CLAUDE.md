@@ -1,7 +1,8 @@
 # Flive
 
-Live Boston Logan (KBOS) air traffic tracker, built on top of my earlier Python
-ATC runway scheduling simulator (Pygame radar view). Portfolio project: will be
+Live Boston Logan (KBOS) air traffic tracker. The end goal: compare real arrivals
+with an optimized landing sequence (a runway scheduler; an idea, not built yet, so
+no earlier simulator exists). Portfolio project: will be
 deployed publicly with a blog post about how it was built.
 
 ## Architecture
@@ -142,6 +143,16 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   arrivals by kind -> `data/scores/ICAO.json` (gitignored). First run: timing
   0.8-1.1 min, but 26-59% of predictions were for planes that never landed here
   (neighbouring airports, GA, overflights): `is_arrival` is the weak point.
+- `arrival_model.py ICAO` - "is it landing here?" classifier (every plane within 40
+  nm / below 18k ft AGL, per minute, label = landed here within 1 h; `candidate()`
+  and `features()` shared with live). -> data/models/ICAO_arrival.joblib, used by
+  eta.py (falls back to is_arrival + landing_elsewhere without it). 20 days: 99%
+  precision, 90/95/96% recall at KBOS/KJFK/EGLL vs rule 46-76% precision.
+- `time_lost.py ICAO` - EUROCONTROL-style additional time in the 40 nm ring:
+  transit minus 20th pct of (entry sector, runway, size class); runs events.detect
+  over all history. -> data/time_lost/ICAO.csv/json (gitignored). 20 days: mean
+  2.7 / 2.2 / 4.5 min KBOS/KJFK/EGLL; rises with landings per hour; EGLL 35%
+  holding. Step 1 of the scheduler story (FCFS vs real vs optimized next).
 - `events.py` - step 4 (done, offline): logs -> landing/takeoff events with
   runway (`data/events_ICAO.csv`, gitignored). Despike ground flags (airborne blips
   first), confirm 60 s, runway by heading <= 25 deg AND <= 0.35 nm from the

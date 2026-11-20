@@ -71,10 +71,10 @@ export default function About() {
       <div className="intro">
         <h1>About Flive</h1>
         <p>
-          Flive is a live map of the planes around Boston Logan (and, if you zoom out, the rest of the world). I built
-          it on top of an older project of mine, a runway scheduling simulator in Python with a little Pygame radar
-          screen. The simulator only ever had made-up planes, and I wanted to see how it would do against real ones.
-          That meant I needed real, live traffic first, and this is that part.
+          Flive is a live map of the planes around Boston Logan (and, if you zoom out, the rest of the world). It
+          started with an idea for a runway scheduler, something that plans the order planes land in, and I wanted to
+          see how it would do against real traffic instead of made-up planes. That meant I needed real, live traffic
+          first, and this is that part.
         </p>
         <p>
           This page is my write-up of how it works. Each section starts with the normal explanation. If you want the
@@ -376,7 +376,7 @@ export default function About() {
 
           <Section id="roadmap" title="What I'm working on next">
             <p>
-              Like I said at the top, Flive came out of my runway scheduling simulator, which plans the order planes land in
+              Like I said at the top, Flive started with an idea for a runway scheduler, which plans the order planes land in
               kind of like air traffic control does. The real goal is to point that kind of model at actual Logan traffic and
               see how close it gets. The plan:
             </p>

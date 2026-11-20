@@ -39,3 +39,6 @@ data/overnight.log
 data/scores/
 # Logs from a duplicate server, kept out of training and scoring
 data/duplicate_logs/
+# Time lost on arrival (time_lost.py) and run logs
+data/time_lost/
+data/*.log
