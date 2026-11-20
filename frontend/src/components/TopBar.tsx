@@ -9,13 +9,14 @@ interface Props {
   now: number;
   chatOpen: boolean;
   onToggleChat: () => void;
+  askEnabled: boolean;
   /** airport at the middle of the map (when zoomed in), shown where KBOS used to be */
   place: { code: string; name: string } | null;
   theme: "dark" | "light";
   onToggleTheme: () => void;
 }
 
-export default function TopBar({ query, onQuery, onSubmit, live, now, chatOpen, onToggleChat, place, theme, onToggleTheme }: Props) {
+export default function TopBar({ query, onQuery, onSubmit, live, now, chatOpen, onToggleChat, askEnabled, place, theme, onToggleTheme }: Props) {
   return (
     <header className="topbar">
       <div className="brand">
@@ -45,9 +46,11 @@ export default function TopBar({ query, onQuery, onSubmit, live, now, chatOpen, 
           <span className="live-text">{live ? "Live" : "Reconnecting"}</span>
           <span className="live-time">· {localTime(now)}</span>
         </div>
-        <button className={`ask-btn ${chatOpen ? "active" : ""}`} onClick={onToggleChat} aria-pressed={chatOpen}>
-          <SparkIcon size={17} /><span>Ask Flive</span>
-        </button>
+        {askEnabled && (
+          <button className={`ask-btn ${chatOpen ? "active" : ""}`} onClick={onToggleChat} aria-pressed={chatOpen}>
+            <SparkIcon size={17} /><span>Ask Flive</span>
+          </button>
+        )}
         <button
           className="icon-btn theme-btn"
           onClick={onToggleTheme}

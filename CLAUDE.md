@@ -51,7 +51,9 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   bar, `src/theme.ts` (system default, choice in localStorage), CSS overrides
   under `[data-theme="light"]`. Switching calls setStyle; MapView's
   `style.load` handler re-adds the plane image, sources and layers each time.
-- `ask.py` - Ask Flive (step 3): Ollama backend behind `chat(messages, tools)`,
+- `ask.py` - Ask Flive (step 3), OFF by default: server.ASK_ENABLED from env
+  ASK_FLIVE=on; off -> button hidden (App reads /api/ask/status `enabled`),
+  /api/ask 404. Kept as an experiment, not core. Ollama backend behind `chat(messages, tools)`,
   7 tools taking a `Ctx` (Boston snapshot + derived rows + WorldStore): Boston
   (traffic_summary, list_aircraft, landing_sequence), world (aircraft_near with
   airline filter, find_airport, world_summary), get_aircraft (Boston then

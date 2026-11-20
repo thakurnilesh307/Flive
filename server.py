@@ -359,6 +359,8 @@ async def ws_endpoint(ws: WebSocket):
 
 # --- Ask Flive --------------------------------------------------------------
 
+# Off by default: an experiment, not part of the core product. ASK_FLIVE=on in .env.
+ASK_ENABLED = os.getenv("ASK_FLIVE", "off").strip().lower() in ("on", "1", "true", "yes")
 backend = ask.OllamaBackend()
 model_slot = asyncio.Semaphore(1)       # one model call at a time; others queue briefly
 ASK_LIMITS = [(60, 5), (3600, 40)]       # per visitor: 5/minute, 40/hour
@@ -389,6 +391,8 @@ def check_rate(ip: str):
 
 @app.post("/api/ask")
 async def ask_endpoint(req: AskRequest, request: Request):
+    if not ASK_ENABLED:
+        raise HTTPException(404, "Ask Flive is turned off on this server.")
     # Behind a reverse proxy this needs the forwarded client IP (deploy step).
     check_rate(request.client.host if request.client else "unknown")
     try:
@@ -408,8 +412,10 @@ async def ask_endpoint(req: AskRequest, request: Request):
 
 @app.get("/api/ask/status")
 async def ask_status():
+    if not ASK_ENABLED:
+        return {"enabled": False, "available": False, "model": backend.model}
     ok = await asyncio.to_thread(backend.available)
-    return {"available": ok, "model": backend.model}
+    return {"enabled": True, "available": ok, "model": backend.model}
 
 
 # --- World feed -------------------------------------------------------------

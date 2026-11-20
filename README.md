@@ -44,9 +44,10 @@ python -m uvicorn server:app
 Open http://127.0.0.1:8000. FastAPI serves the built React app from
 `frontend/dist`.
 
-For Ask Flive, install [Ollama](https://ollama.com), then `ollama pull qwen3:8b`
-(or set `OLLAMA_MODEL` in `.env` to another model with tool calling). Without
-it, everything else works and the chat panel shows "offline".
+Ask Flive (the chat) is an experiment and is **off by default**. To try it, set
+`ASK_FLIVE=on` in `.env`, install [Ollama](https://ollama.com), then
+`ollama pull qwen3:8b` (or set `OLLAMA_MODEL` to another model with tool calling).
+Switched on without Ollama, the chat panel shows "offline".
 
 For frontend work with hot reload, keep the server running and in a second
 terminal run `cd frontend; npm run dev`, then open http://localhost:5173 (Vite
@@ -143,6 +144,11 @@ contained.
 Debug endpoints: `GET /api/world/stats`, `GET /api/world?bbox=west,south,east,north`.
 
 ## Ask Flive
+
+**Off by default** (`ASK_FLIVE=on` in `.env` turns it on). It isn't part of the core
+project: the map and the detail panel already answer what people would ask, a small
+local model still gets things wrong now and then, and a public deployment would need
+a GPU or a paid model. The code stays as a working experiment.
 
 A chat panel that answers questions about live traffic using a local LLM
 (Ollama) with tool calling. The model can't answer from memory: it calls tools

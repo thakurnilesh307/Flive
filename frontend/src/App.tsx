@@ -57,6 +57,14 @@ export default function App() {
   const [tableOpen, setTableOpen] = useState(true);
   const [now, setNow] = useState(Date.now());
   const [chatOpen, setChatOpen] = useState(false);
+  // Ask Flive is off unless the server says it's switched on (ASK_FLIVE=on).
+  const [askEnabled, setAskEnabled] = useState(false);
+  useEffect(() => {
+    fetch("/api/ask/status")
+      .then((r) => r.json())
+      .then((s) => setAskEnabled(s.enabled === true))
+      .catch(() => setAskEnabled(false));
+  }, []);
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const mapRef = useRef<GLMap | null>(null);
 
@@ -206,6 +214,7 @@ export default function App() {
         now={now}
         chatOpen={chatOpen}
         onToggleChat={() => setChatOpen((o) => !o)}
+        askEnabled={askEnabled}
       />
 
       <StatsCard
@@ -227,7 +236,7 @@ export default function App() {
       </div>
 
       {showDetail && selected && <DetailPanel d={selected} airportName={selected.a.airport === "KBOS" ? "Logan" : airportFeeds.find((f) => f.icao === selected.a.airport)?.name ?? null} serverNow={serverNow} following={follow} onToggleFollow={() => setFollow((f) => !f)} onClose={() => setSelectedId(null)} />}
-      {chatOpen && (
+      {chatOpen && askEnabled && (
         <ChatPanel messages={chat} setMessages={setChat} suggestions={suggestions} onClose={() => setChatOpen(false)} />
       )}
 

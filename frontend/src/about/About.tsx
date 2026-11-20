@@ -323,6 +323,11 @@ export default function About() {
 
           <Section id="ask-flive" title="Ask Flive">
             <p>
+              <b>Ask Flive is switched off on this site.</b> It was an experiment, and it isn&apos;t part of what Flive is
+              about: the map already answers most of what you&apos;d ask, and a small model still gets things wrong
+              sometimes. The code is still there, and it runs if you set <code>ASK_FLIVE=on</code> when running Flive yourself.
+            </p>
+            <p>
               Ask Flive is a chat where you can ask stuff like &quot;What&apos;s landing next?&quot;, &quot;How busy is Heathrow?&quot;
               or &quot;Where is DLH400 right now?&quot;. It runs on a <b>large language model</b> (LLM), which is software trained
               on a huge amount of text to predict what comes next. The problem with LLMs is that they&apos;ll confidently make
@@ -469,7 +474,7 @@ export default function About() {
             <Dev title="Run it yourself">
               <pre>{`python -m pip install -r requirements.txt
 cd frontend; npm install; npm run build; cd ..
-# optional, for Ask Flive:
+# optional, for Ask Flive (off by default): set ASK_FLIVE=on in .env, then
 ollama pull qwen3:8b
 python -m uvicorn server:app      # http://127.0.0.1:8000`}</pre>
               <p>Endpoints: <code>GET /ws</code> (WebSocket snapshots), <code>POST /api/ask</code>, <code>GET /api/ask/status</code>.</p>
@@ -486,8 +491,8 @@ python -m uvicorn server:app      # http://127.0.0.1:8000`}</pre>
                 <p>No. Controllers use radar and certified systems with full coverage. Flive runs on volunteer receivers and is just for curiosity and learning. Please don&apos;t use it for navigation or anything safety-related.</p></details>
               <details><summary>How accurate are the &quot;inbound&quot; and &quot;on approach&quot; labels?</summary>
                 <p>Usually right for airliners near Logan, sometimes wrong for small planes going to nearby airports. They come from simple rules, and replacing them with real detection is the next thing on my list.</p></details>
-              <details><summary>Why is Ask Flive sometimes offline or slow?</summary>
-                <p>It runs a full language model on my own machine instead of a paid cloud service. If the model isn&apos;t running, the chat tells you and the map still works. Answers take a few seconds, longer if a few people ask at once.</p></details>
+              <details><summary>Where did Ask Flive go?</summary>
+                <p>It&apos;s switched off. It ran a full language model on my own machine, it sometimes got things wrong, and the map already shows the same information. The section above explains how it worked.</p></details>
             </div>
           </Section>
 
