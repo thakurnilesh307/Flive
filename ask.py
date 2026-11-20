@@ -44,6 +44,8 @@ Rules:
 - altitude_ft is barometric altitude (roughly above sea level), not height above ground. Just say "at N ft".
 - Flive never knows which airport a flight came from or is going to. current_position is only where the plane is right now (relative to Logan or the nearest airport); never present it as an origin or destination.
 - Statuses (inbound, on approach, departing) are estimates from position, heading and climb or descent. Say "estimated" when it matters.
+- Follow-up questions about aircraft from an earlier answer ("that plane", "where is it heading"): call list_aircraft (or get_aircraft with its callsign) and answer about those aircraft. "Where is it heading" = its direction of travel (flying_toward) and any predicted_landing; Flive doesn't know destinations.
+- "Coming in" / "arriving" questions: answer with arriving_now (inbound + on approach) first; en route planes are passing through, not arriving.
 - When the user names a specific flight, callsign or registration, call get_aircraft with it. If it's not found, say Flive isn't tracking it right now; don't speculate about where it might be.
 - When filtering lists, only use the status filter if the user asked about a status. Describe exactly what you checked (e.g. "no JetBlue flights are arriving right now" is not the same as "none nearby").
 - Worldwide planes may have a "probably landing at ..." predicted_landing from Flive's rough global model: say it's a rough estimate and that the airport is a guess.
@@ -98,6 +100,9 @@ def _with_phrases(row):
     """Public fields plus a ready-made phrase for the time lower bound, because a
     small model will otherwise turn a bare number into a confident ETA."""
     out = _public(row)
+    trk = row.get("track_deg")
+    if trk is not None and not row.get("on_ground"):
+        out["flying_toward"] = f"{COMPASS[round(trk / 45) % 8]} (track {trk} deg); destination unknown"
     m = out.pop("earliest_possible_minutes_to_kbos", None)
     p, lo, hi = row.get("_predicted_min"), row.get("_predicted_lo_min"), row.get("_predicted_hi_min")
     if p is not None:
@@ -170,19 +175,31 @@ REGIONS = [
 ]
 
 
+SUMMARY_DETAIL_MAX = 6
+COMPASS = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"]
+
+
 def tool_traffic_summary(ctx):
     counts = {}
     for r in ctx.rows:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
-    return {
+    out = {
         "area": "within 40 nm of Boston Logan (KBOS)",
         "data_time_boston": _data_time(ctx.snapshot),
         "total_tracked": len(ctx.rows),
         "airborne": sum(1 for r in ctx.rows if not r["on_ground"]),
         "on_ground": sum(1 for r in ctx.rows if r["on_ground"]),
+        "arriving_now": sum(1 for r in ctx.rows if r["_status"] in STATUS_FILTERS["arriving"]),
         "by_status": counts,
         "note": "Statuses are estimates. Only aircraft with ADS-B or MLAT coverage appear.",
     }
+    # With only a few planes airborne, include them: a small model often calls this
+    # tool again for a follow-up ("where is that one heading?") and would otherwise
+    # have nothing but counts to answer from.
+    airborne = [r for r in ctx.rows if not r["on_ground"]]
+    if airborne and len(airborne) <= SUMMARY_DETAIL_MAX:
+        out["airborne_aircraft"] = [_with_phrases(r) for r in airborne]
+    return out
 
 
 def tool_list_aircraft(ctx, status=None, airline=None, limit=10):
