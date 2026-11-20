@@ -226,6 +226,16 @@ def tool_list_aircraft(ctx, status=None, airline=None, limit=10):
         "sorted_by": "distance from KBOS",
         "aircraft": [_with_phrases(r) for r in picked[:limit]],
     }
+    if not picked and status and not airline:
+        # Small models add a status filter nobody asked for ("that plane NE of Boston"
+        # -> status=approach), get nothing, and announce the area is empty. Show what
+        # IS airborne, so the answer can't contradict the map.
+        others = [r for r in ctx.rows if not r["on_ground"]]
+        if others:
+            result["other_airborne_aircraft"] = [_with_phrases(r) for r in others[:limit]]
+            note = (f"No aircraft have status '{status}', but the area is NOT empty: "
+                    f"{len(others)} other aircraft are airborne nearby (listed). If the user asked about a "
+                    "plane in a direction or place, match it by current_position.")
     if note:
         result["note"] = note
     return result
