@@ -41,4 +41,5 @@ data/scores/
 data/duplicate_logs/
 # Time lost on arrival (time_lost.py) and run logs
 data/time_lost/
+data/scheduler/
 data/*.log

@@ -155,6 +155,13 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   over all history. -> data/time_lost/ICAO.csv/json (gitignored). 20 days: mean
   2.7 / 2.2 / 4.5 min KBOS/KJFK/EGLL; rises with landings per hour; EGLL 35%
   holding. Step 1 of the scheduler story (FCFS vs real vs optimized next).
+- `scheduler.py [ICAO..]` - FCFS replay of time_lost arrivals: earliest = 40 nm
+  crossing + unimpeded; per real runway in earliest order; spacing = median real
+  gap when the follower was queued (delay > 2 min), per (runway, lead size, follow
+  size) -> airport pair -> default. Departures NOT modelled separately (pinning them
+  starved 04R into 100-min queues; queued gaps already include them). Compare real
+  minus quiet-hour floor vs FCFS: KBOS/KJFK real beats FCFS when busy, EGLL worse in
+  40+ hours (holding stacks). -> data/scheduler/ (gitignored). Next: optimizer (CPS).
 - `transfer.py [eta] [arrival]` - "transfer controller": generic features (no
   bearing/track/cfg_*/alt_ft) trained on the other airports + first k days of the
   target vs local expert on first k days; test = target's last 10 days. Caches

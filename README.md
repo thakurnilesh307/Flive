@@ -238,6 +238,7 @@ Coverage on a live check: 99% of worldwide aircraft got a type, 86% an operator.
 | `score_predictions.py` | Scores the predictions the live server logged against the landings that followed |
 | `arrival_model.py` | "Is it landing here?" classifier per airport, used live to decide who gets a prediction |
 | `time_lost.py` | Time each arrival loses inside 40 nm vs. comparable unimpeded flights |
+| `scheduler.py` | Replays real arrivals first come, first served and compares the delay with reality |
 | `transfer.py` | "Transfer controller" test: generic models on airports they never saw, plus days of local data |
 | `train_runway.py` | Landing/takeoff runway classifiers, scored against "most-used runway" |
 | `scripts/build_aircraft_db.py` | Downloads the aircraft DB and the OpenFlights airline list into `data/` |
@@ -507,6 +508,42 @@ underestimate: when nearly every arrival queues, the 20th percentile "unimpeded"
 time already includes some queueing. Holding-like = at least 540 degrees of turning
 inside the ring.
 
+## First come, first served vs. what really happened
+
+`python scheduler.py` (after `time_lost.py`) replays every real arrival through the
+simplest possible scheduler. Each plane's earliest possible landing = when it crossed
+40 nm + its unimpeded time. On the runway it really used, planes land in that order,
+each as soon as the runway allows. The runway's pace is measured, not assumed: per
+runway and aircraft-size pair, the median gap behind a landing when the next plane
+was already queued. That gap already includes room for departures on mixed runways
+and the controllers' normal margin. (A first version used the tightest gaps ever
+flown and pinned real departures in place; on Logan's mixed runway 04R that starved
+arrivals into a 100-minute queue, and everywhere else FCFS looked impossibly good.)
+
+Real delays also contain time that isn't sequencing (a longer route, a slower
+plane): even in quiet hours real arrivals lose 0.8 / 1.5 / 1.6 min at Logan / JFK /
+Heathrow, against ~0.1 for the replay. So real delay is shown minus that quiet-hour
+floor. Mean delay per arrival, minutes, by how busy the hour was:
+
+| Landings that hour | Logan: real / FCFS | JFK: real / FCFS | Heathrow: real / FCFS |
+| --- | --- | --- | --- |
+| 20-29 | 1.0 / 1.1 | **0.6** / 1.6 | **0.4** / 0.9 |
+| 30-39 | **2.7** / 3.1 | **1.2** / 3.4 | 2.2 / **2.0** |
+| 40+ | **3.0** / 4.5 | **1.5** / 3.7 | 5.4 / **4.0** |
+
+- **Logan and JFK controllers beat arrival order** when it's busy, JFK by about 2
+  minutes per arrival. Swapping planes and using speed control to fill gaps pays off.
+- **Heathrow is the exception** in its busiest hours: its arrivals lose more than a
+  naive queue would give them. That's the cost of the holding stacks. Heathrow keeps
+  a queue on purpose so the runway never waits for a plane, which buys throughput with
+  extra minutes per flight. The replay assumes perfect delivery to the runway, which
+  is exactly what the stacks are insurance against.
+
+Limits: runways are fixed to the ones really used, dependent runways (crossing or
+close parallels) are treated as independent, and any delay can be absorbed. Report:
+`data/scheduler/ICAO.json`, per-hour `ICAO_hours.csv` (gitignored). Next: an
+optimizer that may reorder planes by up to 2-3 places, for the third column.
+
 ## The transfer controller: one model for any airport
 
 A controller moved from Boston to JFK brings general skills and needs only the
@@ -569,7 +606,7 @@ to local features once a few days of local data exist.
 3. "Ask Flive": chat over the live state using a local LLM with tool calling
 4. Arrival/departure detection per flight (runway, touchdown/liftoff time) - done (offline, `events.py`)
 5. Landing-time model: predicted landing times and order vs. actual - model, live predictions, scoring of live predictions and the "is it landing here?" classifier done
-6. Time lost on arrival (`time_lost.py`, done), then a runway scheduler to compare against: first come first served vs. what really happened vs. optimized
+6. Time lost on arrival (`time_lost.py`, done); first come, first served replay (`scheduler.py`, done); optimized sequence next
 7. A generic "transfer controller" model: tested (`transfer.py`): landing time transfers from day one, "is it landing here?" needs ~3 days of local data; settling-in hybrid next
 8. Always-on deployment
 
