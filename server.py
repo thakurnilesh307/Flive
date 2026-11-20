@@ -32,6 +32,7 @@ load_dotenv(HERE / ".env")  # before importing modules that read env vars
 
 import ask  # noqa: E402
 import world_feed  # noqa: E402
+import adsb_feed  # noqa: E402
 from adsb_feed import RateLimited, poll_once  # noqa: E402
 import aircraft_db  # noqa: E402
 import airports  # noqa: E402
@@ -65,6 +66,7 @@ class Client:
         self.view = None              # (visible, padded) boxes once the page asks for world data
         self.keep = ()                # icao24s to always include (the page's selected plane)
         self.airports = set()         # prediction airports (not Logan) inside the page's view
+        self.follow = None            # icao24 the page is following: gets fast "track" updates
         self.lock = asyncio.Lock()
 
     async def send(self, text: str):
@@ -220,6 +222,51 @@ async def airport_poller(icao, start_delay):
         await asyncio.sleep(delay)
 
 
+FOLLOW_EVERY_S = 2.0      # fast lane: one single-aircraft request at most this often
+FOLLOW_MAX = 4            # most different followed planes served at once (round robin)
+_HEX = re.compile(r"^[0-9a-f]{6}$")
+
+
+async def follow_poller():
+    """Fast lane for followed planes. While any page follows a plane, ask adsb.fi for
+    just that plane about every 2 s (vs 5-10 s area polls) and push it as a "track"
+    message to the pages following it. One request serves every viewer of that plane;
+    several different planes share the lane round robin. It shares adsb.fi's 1 req/s
+    budget with the area pollers (adsb_feed spaces all requests >= 1.2 s apart)."""
+    turn, failures = 0, 0
+    while True:
+        ids = sorted({c.follow for c in clients if c.follow})[:FOLLOW_MAX]
+        if not ids or not adsb_feed.hex_url():
+            await asyncio.sleep(0.5)
+            continue
+        icao = ids[turn % len(ids)]
+        turn += 1
+        started = time.monotonic()
+        delay = FOLLOW_EVERY_S
+        try:
+            a, api_time = await asyncio.to_thread(adsb_feed.poll_hex, icao)
+            failures = 0
+            if a:
+                aircraft_db.enrich([a])
+                weather.apply([a], qnh_field)
+                msg = json.dumps({"type": "track", "icao24": icao, "api_time": api_time, "aircraft": a})
+                for c in list(clients):
+                    if c.follow == icao:
+                        try:
+                            await c.send(msg)
+                        except Exception:
+                            clients.discard(c)
+        except RateLimited as e:
+            failures += 1
+            delay = max(e.retry_after or 0, min(MAX_BACKOFF, FOLLOW_EVERY_S * 2 ** failures))
+            print(f"Follow lane: rate limited, waiting {delay}s")
+        except Exception as e:
+            failures += 1
+            delay = min(MAX_BACKOFF, FOLLOW_EVERY_S * 2 ** failures)
+            print(f"Follow lane: poll failed ({e}), retrying in {delay}s")
+        await asyncio.sleep(max(0.0, delay - (time.monotonic() - started)))
+
+
 async def poller():
     global latest
     failures = 0
@@ -307,15 +354,18 @@ async def lifespan(app):
             print(f"{icao} landing model off: {pred.error}")
     weather_task = asyncio.create_task(weather_poller())
     task = asyncio.create_task(poller())
+    follow_task = asyncio.create_task(follow_poller())
     world_task = None
     if os.getenv("WORLD_FEED", "on").lower() != "off":
         world_task = asyncio.create_task(world_poller())
     # Load the LLM in the background so the first question isn't a cold start.
-    asyncio.create_task(asyncio.to_thread(backend.warm_up))
+    if ASK_ENABLED:
+        asyncio.create_task(asyncio.to_thread(backend.warm_up))
     yield
     for t in extra_tasks:
         t.cancel()
     task.cancel()
+    follow_task.cancel()
     weather_task.cancel()
     if world_task:
         world_task.cancel()
@@ -334,13 +384,18 @@ async def ws_endpoint(ws: WebSocket):
     try:
         while True:
             text = await ws.receive_text()
-            # Only message type so far: {"type": "view", "bbox": [w, s, e, n], "keep": [icao24]}.
+            # {"type": "view", "bbox": [w, s, e, n], "keep": [icao24]} or
+            # {"type": "follow", "icao24": "abc123" | null}.
             # Pages that never send one never get world data (old pages keep working).
             if len(text) > 300:
                 continue
             try:
                 msg = json.loads(text)
             except ValueError:
+                continue
+            if isinstance(msg, dict) and msg.get("type") == "follow":
+                f = msg.get("icao24")
+                c.follow = f if isinstance(f, str) and _HEX.match(f) else None
                 continue
             if isinstance(msg, dict) and msg.get("type") == "view":
                 view = world_feed.parse_view(msg)

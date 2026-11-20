@@ -23,6 +23,7 @@ RADIUS_NM = 40
 MIN_GAP_S = 1.2     # adsb.fi allows 1 request/s per IP: keep every poller (Logan + others) under it
 
 DEFAULT_URL = "https://opendata.adsb.fi/api/v3/lat/{lat}/lon/{lon}/dist/{nm}"
+DEFAULT_HEX_URL = "https://opendata.adsb.fi/api/v2/hex/{hex}"   # one aircraft, same JSON format
 USER_AGENT = "Flive/0.1 (live airport traffic tracker; +https://github.com/thakurnilesh307/Flive)"
 
 FT_TO_M = 0.3048
@@ -153,6 +154,44 @@ def poll_once(lat=KBOS_LAT, lon=KBOS_LON, nm=RADIUS_NM):
     api_time = now_ms / 1000 if isinstance(now_ms, (int, float)) else fetched_at
     aircraft = [convert(ac, api_time) for ac in data.get("ac") or []]
     return {"fetched_at": fetched_at, "api_time": api_time, "aircraft": aircraft}
+
+
+_HEX = re.compile(r"^[0-9a-f]{6}$")
+
+
+def hex_url():
+    """Single-aircraft URL template, or None when a custom provider has no such endpoint
+    (ADSB_URL set without ADSB_HEX_URL): then the follow fast lane stays off."""
+    custom = os.getenv("ADSB_HEX_URL")
+    if custom:
+        return custom
+    return None if os.getenv("ADSB_URL") else DEFAULT_HEX_URL
+
+
+def poll_hex(icao24):
+    """One aircraft by its ICAO address: (converted aircraft or None, api_time).
+    Shares the 1 request/s budget with the area pollers."""
+    template = hex_url()
+    if not template or not _HEX.match(icao24 or ""):
+        return None, time.time()
+    headers = {}
+    key = os.getenv("ADSB_API_KEY")
+    if key:
+        headers["x-api-key"] = key
+    _throttle()
+    r = _session.get(template.format(hex=icao24), headers=headers, timeout=10)
+    if r.status_code == 429:
+        retry = r.headers.get("Retry-After")
+        raise RateLimited(int(retry) if retry and retry.isdigit() else None)
+    r.raise_for_status()
+    data = r.json()
+    now_ms = data.get("now")
+    api_time = now_ms / 1000 if isinstance(now_ms, (int, float)) else time.time()
+    for ac in data.get("ac") or []:
+        a = convert(ac, api_time)
+        if a["icao24"] == icao24 and a["lat"] is not None and a["lon"] is not None:
+            return a, api_time
+    return None, api_time
 
 
 if __name__ == "__main__":

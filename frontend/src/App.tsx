@@ -41,7 +41,7 @@ function matches(d: Derived, q: string): boolean {
 }
 
 export default function App() {
-  const { snapshot, connected, clockSkew, trails, world, sendView, keepAircraft, airportFeeds } = useLiveFeed();
+  const { snapshot, connected, clockSkew, trails, world, sendView, keepAircraft, airportFeeds, followAircraft } = useLiveFeed();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [follow, setFollow] = useState(true);
   const [theme, setTheme] = useState<Theme>(initialTheme);
@@ -92,6 +92,8 @@ export default function App() {
 
   // Ask the server to always include the selected plane, even when thinning would drop it.
   useEffect(() => { keepAircraft(selectedId); }, [selectedId, keepAircraft]);
+  // Following a plane switches it to the server's fast lane (~2 s updates instead of 5-10 s).
+  useEffect(() => { followAircraft(follow && selectedId ? selectedId : null); }, [follow, selectedId, followAircraft]);
 
   const q = query.trim().toUpperCase();
   const airportsReady = useAirports();

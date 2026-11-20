@@ -21,6 +21,13 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
 - `adsb_feed.py` - polls a readsb-format API (adsb.fi by default, 40 nm radius
   around KBOS, no key), sanitizes and converts to the snapshot format below.
   Raises `RateLimited` on 429. Provider is set by `ADSB_URL` / `ADSB_API_KEY`.
+  `poll_hex(icao24)` = one aircraft (adsb.fi /v2/hex/, or `ADSB_HEX_URL`; off for a
+  custom ADSB_URL without it), same throttle.
+- Follow fast lane: page sends {"type":"follow","icao24"} (App: follow && selected);
+  server.follow_poller polls followed planes every 2 s (round robin, max 4) and
+  sends {"type":"track"} to followers. useLiveFeed merges position fields into
+  whichever feed has the plane and keeps the newest fix over slower feeds. MapView
+  dead-reckons taxiing planes too (>= 1.5 m/s, max 4 s).
 - `server.py` - FastAPI app: background poller task (5s poll, 15s log,
   exponential backoff on 429 and errors), WebSocket broadcast, serves the
   built frontend from `frontend/dist` (mounted last so `/ws` wins).

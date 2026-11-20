@@ -53,6 +53,23 @@ For frontend work with hot reload, keep the server running and in a second
 terminal run `cd frontend; npm run dev`, then open http://localhost:5173 (Vite
 forwards `/ws` to the server).
 
+## Following a plane: the fast lane
+
+The map refreshes Logan every 5 s and JFK/Heathrow every 10 s. When you follow a
+plane (select it; following is on by default), the server also asks adsb.fi for
+just that plane about every 2 s and pushes it to your page as a `track` message.
+One request serves everyone following the same plane; up to 4 different followed
+planes share the lane in turn. It shares adsb.fi's 1 request/s budget with the area
+feeds, which keep their own pace. Between updates the map glides the plane along its
+speed and heading, now on the ground too (taxiing above ~3 kt, at most 4 s ahead,
+because taxiing planes turn often), and slides it to each new fix instead of jumping.
+
+Measured: a followed airborne plane got a fresh position (0-0.4 s old) every 1.2-3.6 s,
+about 2 s on average. Parked planes barely transmit, so their position can be 15-30 s
+old however often we ask; and ground coverage near the gates varies by airport.
+With a custom `ADSB_URL` provider the lane stays off unless `ADSB_HEX_URL` gives its
+single-aircraft endpoint.
+
 ## Frontend
 
 React + TypeScript (Vite) with [MapLibre GL](https://maplibre.org): a vector

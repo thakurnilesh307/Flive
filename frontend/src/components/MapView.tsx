@@ -38,6 +38,8 @@ interface Props {
 
 const STALE_S = 30;              // fade aircraft we haven't heard from in this long
 const MAX_EXTRAPOLATE_S = 20;    // Boston: never dead-reckon further than this
+const GROUND_EXTRAPOLATE_S = 4;  // taxiing planes turn often: glide only briefly past the last fix
+const GROUND_MOVING_MS = 1.5;    // ~3 kt: slower than this on the ground = parked, don't move it
 const WORLD_EXTRAPOLATE_S = 120; // world updates are ~90 s apart; cap the glide a bit beyond that
 const LOCAL_FRAME_MS = 33;  // Boston planes redraw ~30 times a second (few planes, cheap)
 const WORLD_FRAME_MS = 250; // world planes redraw 4 times a second (up to 2,000 planes)
@@ -61,10 +63,13 @@ type FC = FeatureCollection<Geometry>;
 function estimate(d: Derived, serverNow: number, cap: number): LatLon | null {
   const a = d.a;
   if (a.lat == null || a.lon == null) return null;
-  if (a.on_ground || a.velocity_ms == null || a.track_deg == null || a.time_position == null) {
+  if (a.velocity_ms == null || a.track_deg == null || a.time_position == null
+    || (a.on_ground && a.velocity_ms < GROUND_MOVING_MS)) {
     return [a.lat, a.lon];
   }
-  const dt = Math.min(cap, Math.max(0, serverNow - a.time_position));
+  // Taxiing planes glide too, but only a few seconds: the next fix (every ~2 s for a
+  // followed plane) arrives before a turn takes it far off the projected line.
+  const dt = Math.min(a.on_ground ? Math.min(cap, GROUND_EXTRAPOLATE_S) : cap, Math.max(0, serverNow - a.time_position));
   return project([a.lat, a.lon], a.track_deg, a.velocity_ms * MS_TO_KT, dt);
 }
 

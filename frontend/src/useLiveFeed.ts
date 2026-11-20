@@ -31,6 +31,23 @@ function decodeRow(fields: string[], row: unknown[]): Aircraft | null {
   };
 }
 
+/** Fields a fast "track" update replaces; everything else (operator, predictions) is kept. */
+const TRACK_FIELDS = ["lat", "lon", "on_ground", "velocity_ms", "track_deg", "vert_rate_ms", "baro_alt_m",
+  "geo_alt_m", "alt_qnh_m", "time_position", "last_contact"] as const;
+
+/** `list` with the plane `fix` describes updated in place, or null if it isn't there or `fix` is older. */
+function applyTrack(list: Aircraft[], fix: Aircraft): Aircraft[] | null {
+  const i = list.findIndex((a) => a.icao24 === fix.icao24);
+  if (i < 0) return null;
+  const old = list[i];
+  if (fix.time_position == null || (old.time_position != null && fix.time_position <= old.time_position)) return null;
+  const merged: Aircraft = { ...old };
+  for (const k of TRACK_FIELDS) (merged as unknown as Record<string, unknown>)[k] = fix[k] ?? null;
+  const out = list.slice();
+  out[i] = merged;
+  return out;
+}
+
 const TRAIL_POINTS = 120;      // ~10 min at one snapshot per 5 s
 const FORGET_AFTER_S = 120;    // drop trails of aircraft gone this long
 const AIRPORT_FEED_MAX_AGE_S = 30;   // the server stops sending once the airport leaves the view
@@ -50,6 +67,8 @@ export interface Feed {
   keepAircraft: (icao24: string | null) => void;
   /** other prediction airports' own feeds (JFK, Heathrow) while they're in view */
   airportFeeds: AirportFeed[];
+  /** the plane being followed (or null): the server sends it ~every 2 s instead of 5-10 s */
+  followAircraft: (icao24: string | null) => void;
 }
 
 export function useLiveFeed(): Feed {
@@ -64,6 +83,22 @@ export function useLiveFeed(): Feed {
   const viewRef = useRef<BBox | null>(null);
 
   const keepRef = useRef<string | null>(null);
+  const followRef = useRef<string | null>(null);
+  const fixRef = useRef<Aircraft | null>(null);   // newest fast fix for the followed plane
+  /** Slower feeds can carry an older position for the followed plane: keep the newer fix. */
+  const keepNewest = (list: Aircraft[]) => (fixRef.current && applyTrack(list, fixRef.current)) || list;
+
+  const sendFollow = useCallback(() => {
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "follow", icao24: followRef.current }));
+  }, []);
+
+  const followAircraft = useCallback((icao24: string | null) => {
+    if (followRef.current === icao24) return;
+    followRef.current = icao24;
+    fixRef.current = null;
+    sendFollow();
+  }, [sendFollow]);
 
   const sendView = useCallback((bbox: BBox) => {
     viewRef.current = bbox;
@@ -110,7 +145,7 @@ export function useLiveFeed(): Feed {
         }
       }
       setClockSkew(snap.api_time - Date.now() / 1000);
-      setSnapshot(snap);
+      setSnapshot({ ...snap, aircraft: keepNewest(snap.aircraft) });
     };
 
     const connect = () => {
@@ -120,15 +155,16 @@ export function useLiveFeed(): Feed {
       ws.onopen = () => {
         setConnected(true);
         if (viewRef.current) sendView(viewRef.current);
+        if (followRef.current) sendFollow();
       };
       ws.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data);
           if (msg?.type === "world") {
             if (!Array.isArray(msg.fields) || !Array.isArray(msg.aircraft)) return;
-            const aircraft = (msg.aircraft as unknown[])
+            const aircraft = keepNewest((msg.aircraft as unknown[])
               .map((r) => (Array.isArray(r) ? decodeRow(msg.fields, r) : null))
-              .filter((a): a is Aircraft => a != null);
+              .filter((a): a is Aircraft => a != null));
             setWorld({
               apiTime: typeof msg.api_time === "number" ? msg.api_time : null,
               nextUpdateS: typeof msg.next_update_s === "number" ? msg.next_update_s : 90,
@@ -137,13 +173,38 @@ export function useLiveFeed(): Feed {
             });
             return;
           }
+          if (msg?.type === "track") {
+            // Fast update for the followed plane: patch it wherever it's shown.
+            const fix = msg.aircraft as Aircraft;
+            if (!fix || typeof fix.icao24 !== "string" || fix.icao24 !== msg.icao24
+              || typeof fix.lat !== "number" || typeof fix.lon !== "number") return;
+            if (fix.icao24 !== followRef.current) return;   // a late message after switching planes
+            if (!fixRef.current || (fix.time_position ?? 0) > (fixRef.current.time_position ?? 0)) fixRef.current = fix;
+            addTrails([fix], typeof msg.api_time === "number" ? msg.api_time : Date.now() / 1000);
+            setSnapshot((snap) => {
+              const list = snap && applyTrack(snap.aircraft, fix);
+              return list ? { ...snap!, aircraft: list } : snap;
+            });
+            setAirportFeeds((f) => {
+              for (const [icao, feed] of Object.entries(f)) {
+                const list = applyTrack(feed.aircraft, fix);
+                if (list) return { ...f, [icao]: { ...feed, aircraft: list } };
+              }
+              return f;
+            });
+            setWorld((w) => {
+              const list = w && applyTrack(w.aircraft, fix);
+              return list ? { ...w!, aircraft: list } : w;
+            });
+            return;
+          }
           if (msg?.type === "airport") {
             if (typeof msg.icao !== "string" || !/^[A-Z]{4}$/.test(msg.icao) || !Array.isArray(msg.aircraft)
               || typeof msg.lat !== "number" || typeof msg.lon !== "number" || typeof msg.api_time !== "number") return;
             const icao: string = msg.icao;
-            const aircraft = (msg.aircraft as Aircraft[])
+            const aircraft = keepNewest((msg.aircraft as Aircraft[])
               .filter((a) => a && typeof a.icao24 === "string")
-              .map((a) => ({ ...a, airport: icao }));
+              .map((a) => ({ ...a, airport: icao })));
             addTrails(aircraft, msg.api_time);
             const feed: AirportFeed = {
               icao,
@@ -186,8 +247,8 @@ export function useLiveFeed(): Feed {
       window.clearTimeout(retry);
       ws?.close();
     };
-  }, [sendView]);
+  }, [sendView, sendFollow]);
 
   const feeds = useMemo(() => Object.values(airportFeeds), [airportFeeds]);
-  return { snapshot, connected, clockSkew, trails, world, sendView, keepAircraft, airportFeeds: feeds };
+  return { snapshot, connected, clockSkew, trails, world, sendView, keepAircraft, airportFeeds: feeds, followAircraft };
 }
