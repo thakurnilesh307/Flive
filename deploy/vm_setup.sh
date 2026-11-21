@@ -58,7 +58,6 @@ sudo docker compose -f deploy/docker-compose.yml up -d --build
 sudo docker image prune -f >/dev/null
 
 # The server logs every snapshot (~0.5 GB/day over three airports): keep a week.
-cron="0 4 * * * docker exec flive-flive-1 find /home/user/app -maxdepth 1 -name '*.jsonl' -mtime +7 -delete"
-( sudo crontab -l 2>/dev/null | grep -v "flive-flive-1 find" ; echo "$cron" ) | sudo crontab -
+echo "0 4 * * * root docker exec flive-flive-1 find /home/user/app -maxdepth 1 -name '*.jsonl' -mtime +7 -delete" | sudo tee /etc/cron.d/flive-logs >/dev/null
 
 say "done: https://$SITE_ADDRESS (the certificate can take a minute on first start)"
