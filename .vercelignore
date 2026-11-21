@@ -1,6 +1,0 @@
-# Vercel only builds the static UI (frontend/); the Python server runs on the VM.
-/*
-!/frontend
-!/vercel.json
-/frontend/node_modules
-/frontend/dist
