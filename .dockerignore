@@ -1,0 +1,15 @@
+# Allow-list: only what the container needs. History, logs, datasets and caches stay out.
+*
+!*.py
+!requirements*.txt
+!scripts/
+!frontend/
+!data/airlines.csv
+!data/airlines_extra.csv
+!data/airports.csv
+!data/runways.csv
+!data/models/*.joblib
+frontend/node_modules
+frontend/dist
+frontend/tsconfig.tsbuildinfo
+**/__pycache__
