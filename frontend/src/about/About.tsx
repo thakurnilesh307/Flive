@@ -67,7 +67,7 @@ export default function About() {
         <p>
           Flive is a live map of the planes around Boston Logan, New York JFK and London Heathrow, and, if you zoom
           out, most of the rest of the world. I started it because I wanted to test a runway scheduling idea (what
-          order should planes land in?) on real traffic instead of made-up planes. To do that I first needed the real
+          order should planes land in?) on live traffic instead of made-up planes. To do that I first needed the
           traffic, so that&apos;s what this is.
         </p>
         <p>
@@ -87,7 +87,7 @@ export default function About() {
         <main className="doc">
           <Section id="what" title="The map">
             <p>
-              Every plane on the map is a real aircraft, pointed the way it&apos;s moving. The faded ones are on the
+              Every plane on the map is an aircraft flying right now, pointed the way it&apos;s moving. The faded ones are on the
               ground. Click a plane, or its row in the list, to see its airline, type, altitude and speed, plus a trail
               of where it&apos;s been since you opened the page. The map then follows that plane until you drag it.
             </p>
@@ -216,7 +216,7 @@ export default function About() {
             </p>
             <p>
               The catch is coverage. The volunteer receivers cover Europe and North America well, but not the oceans or
-              large parts of Africa, Asia and South America. So the real worldwide count is higher than what you see,
+              large parts of Africa, Asia and South America. So the actual worldwide count is higher than what you see,
               and planes outside the three airports can be up to 90 seconds old before the map moves them forward.
             </p>
             <Dev title="Technical details: the numbers">
@@ -243,7 +243,7 @@ export default function About() {
             <p>
               New positions arrive every few seconds, so on their own the planes would jump. In between updates I move
               each plane forward in the direction and at the speed it&apos;s going, which pilots call <b>dead
-              reckoning</b>. The guess is never exact, so when the next real position arrives the plane is slightly off,
+              reckoning</b>. The guess is never exact, so when the next reported position arrives the plane is slightly off,
               and instead of snapping it I slide it to the right spot over about a second.
             </p>
             <p>A plane that hasn&apos;t been heard from in 30 seconds fades out, and it&apos;s removed once it drops out of the feed.</p>
@@ -254,7 +254,7 @@ export default function About() {
                 (<code>time_position</code>), corrected for the clock difference between browser and server, with flat-earth
                 maths, and never more than 20 s ahead. When a new report arrives, <code>makeSmoother</code> eases the gap
                 between where the plane was drawn and its new estimate down to zero (1.2 s for the airports, 2.5 s for the
-                world). Gaps over 0.3° count as real jumps and snap. Trails only live in your browser (about 10 minutes).
+                world). Gaps over 0.3° count as jumps and snap. Trails only live in your browser (about 10 minutes).
               </p>
             </Dev>
           </Section>
@@ -291,16 +291,16 @@ export default function About() {
 
           <Section id="models" title="The prediction models">
             <p>
-              The point of all this was to compare real traffic with what a scheduler would do, and for that I needed to
+              The point of all this was to compare recorded traffic with what a scheduler would do, and for that I needed to
               know exactly when and where every plane landed. So I built that up in steps. Each one is tested on days the
               model never saw, and the charts are on the <a href="/results.html">Results page</a>.
             </p>
             <ol className="steps">
               <li>
-                Finding real landings and takeoffs. I follow each plane through the logged positions, catch the moment its
+                Finding landings and takeoffs. I follow each plane through the logged positions, catch the moment its
                 &quot;on ground&quot; flag flips, and work out the runway from its heading and position. The flag glitches a lot,
                 so there are sanity checks. Against OpenSky&apos;s official arrival records over 35 days, it finds 95-97% of
-                arrivals at all three airports, and 99-100% of what it finds are real landings.
+                arrivals at all three airports, and 99-100% of what it finds did land.
               </li>
               <li>
                 When each plane will land. The obvious guess, distance divided by speed, is about 5 minutes off on average,
@@ -320,7 +320,7 @@ export default function About() {
                 planes a day got a prediction and then landed somewhere else: Newark, Gatwick, Bedford. The training data
                 only had planes that did land, so the model never learned that. A separate model trained on every plane that
                 came near fixed it. Since it went live, wrong arrival predictions dropped from 919 to 1 at JFK (377 to 3 at
-                Logan, 526 to 4 at Heathrow) while it still catches 98-99% of real landings.
+                Logan, 526 to 4 at Heathrow) while it still catches 98-99% of landings.
               </li>
               <li>
                 Other airports. Everything started out hardcoded for Logan. Now any airport works, and elsewhere in the world
@@ -331,7 +331,7 @@ export default function About() {
             </ol>
             <p>
               What I&apos;m still working on: the &quot;likely&quot; time range shown with each prediction is too narrow live (it
-              holds the real landing time only about 62% of the time at JFK, where I aimed for 80%), and a model that
+              holds the actual landing time only about 62% of the time at JFK, where I aimed for 80%), and a model that
               starts at a new airport with general knowledge and then switches to local data once it has a few days of it.
             </p>
             <Dev title="Technical details: the models and how they're tested">

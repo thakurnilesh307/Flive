@@ -61,7 +61,7 @@ export default function ResultsPage() {
         <p>
           Flive records every plane around Boston Logan, New York JFK and London Heathrow. Over about five weeks
           that adds up to roughly 57,000 landings. I used them to answer three questions: how much time do arriving
-          planes lose waiting for their turn, could a scheduler have done better than the real controllers, and can a
+          planes lose waiting for their turn, could a scheduler have done better than the controllers on duty, and can a
           model trained at some airports work at one it has never seen?
         </p>
         {r && <p className="meta">Data from {r.time_lost.KBOS.days[0]} to {r.time_lost.KBOS.days[1]}, from free public ADS-B feeds. Last updated {r.generated}.</p>}
@@ -93,7 +93,7 @@ function Body({ r }: { r: Results }) {
   }));
 
   // 2. scheduler comparison, one panel per airport on a shared scale
-  const schedNames = ["What really happened", "First come, first served", "Optimizer (reorder)", "Optimizer + runway choice"];
+  const schedNames = ["What happened (logged)", "First come, first served", "Optimizer (reorder)", "Optimizer + runway choice"];
   const schedKeys = ["real_min", "fcfs_min", "optimizer_min", "optimizer_runways_min"] as const;
   const schedColor = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
   const schedMax = Math.max(...aps.flatMap((a) => r.scheduler[a.icao].by_traffic.flatMap((b) => schedKeys.map((k) => b[k]))));
@@ -159,20 +159,20 @@ function Body({ r }: { r: Results }) {
 
       <Section id="scheduler" title="Could a scheduler do better?">
         <p>
-          I replayed every real arrival through three schedulers. Each one lands the same planes on the same
+          I replayed every recorded arrival through three schedulers. Each one lands the same planes on the same
           runways, at the rate those runways actually manage when there&apos;s a queue. First come, first served lands
           planes in the order they could arrive, each as soon as the runway allows. The optimizer can also swap
           planes by up to three places to cut the total delay (solved exactly). The last one can additionally move a
           plane to another runway that was in use for landings at the time.
         </p>
         <p>
-          Real delay also includes time that has nothing to do with the queue, like a longer route or a slower plane,
-          so for &quot;what really happened&quot; I subtracted the delay arrivals have even in quiet hours.
+          Logged delay also includes time that has nothing to do with the queue, like a longer route or a slower plane,
+          so for &quot;what happened&quot; I subtracted the delay arrivals have even in quiet hours.
         </p>
-        <Figure n={3} title="Minutes lost per arrival, real vs. three schedulers"
+        <Figure n={3} title="Minutes lost per arrival, logged vs. three schedulers"
                 sub="By how many planes landed that hour. All three panels use the same scale."
                 legend={<Legend series={schedNames.map((n, i) => ({ name: n, color: schedColor[i] }))} kind="bar" />}
-                table={<DataTable caption="Minutes lost per arrival, real (adjusted) vs. schedulers"
+                table={<DataTable caption="Minutes lost per arrival, logged (adjusted) vs. schedulers"
                                   head={["Airport · landings that hour", ...schedNames]}
                                   rows={aps.flatMap((a) => r.scheduler[a.icao].by_traffic.map((b) => [`${a.name} · ${b.bucket}`, ...schedKeys.map((k) => b[k].toFixed(1))]))} />}>
           <div className="multiples">
@@ -182,7 +182,7 @@ function Body({ r }: { r: Results }) {
                 <div key={a.icao} className="panel">
                   <h4>{a.name}</h4>
                   <GroupedBars groups={bt.map((b) => b.bucket)} unit=" min" yMax={schedMax} xTitle="Landings that hour"
-                               label={`${a.name}: minutes lost per arrival, real vs. schedulers`}
+                               label={`${a.name}: minutes lost per arrival, logged vs. schedulers`}
                                series={schedNames.map((n, i) => ({ name: n, color: schedColor[i], values: bt.map((b) => b[schedKeys[i]]) }))} />
                 </div>
               );
@@ -191,9 +191,9 @@ function Body({ r }: { r: Results }) {
         </Figure>
         <ul className="takeaways">
           <li>Reordering helps. In busy hours the optimizer cuts first-come delay by 12-38%, mostly by grouping heavy jets so fewer planes have to wait out the longer gaps behind them.</li>
-          <li>At Logan, once the optimizer can also pick runways (it moved {r.scheduler.KBOS.runway_choice_moved_pct}% of arrivals), it slightly beats the real controllers in the busiest hours. In hours with 30-39 landings the controllers still win.</li>
+          <li>At Logan, once the optimizer can also pick runways (it moved {r.scheduler.KBOS.runway_choice_moved_pct}% of arrivals), it slightly beats the controllers in the busiest hours. In hours with 30-39 landings the controllers still win.</li>
           <li>JFK&apos;s controllers beat every scheduler, by about two minutes per arrival at the busiest times. Runway choice doesn&apos;t help because JFK&apos;s landing runways are already fully used. My guess is they do things the replay can&apos;t model, like tightening the gaps during a rush.</li>
-          <li>Heathrow is the only place the schedulers find real room, over 2 minutes per arrival in its busiest hours, and most of that is the stack buffer it keeps on purpose.</li>
+          <li>Heathrow is the only place the schedulers find much room, over 2 minutes per arrival in its busiest hours, and most of that is the stack buffer it keeps on purpose.</li>
         </ul>
         <p className="caveat">
           Caveats: runways that cross or sit close together are treated as independent, any amount of delay can be
@@ -229,7 +229,7 @@ function Body({ r }: { r: Results }) {
         <Figure n={5} title="Is it landing here? That part needs local data"
                 sub="Share of arrival predictions that were right (higher is better). The scale starts at 50%."
                 legend={<Legend series={tSeries(aps[0].icao, "arr_local_precision", "arr_transfer_precision")} kind="line" />}
-                table={<DataTable caption="Predictions right / real arrivals found (%), by days of the new airport's data"
+                table={<DataTable caption="Predictions right / arrivals found (%), by days of the new airport's data"
                                   head={["Airport · days of local data", "Local: right / found", "Transfer: right / found"]}
                                   rows={aps.flatMap((a) => r.transfer[a.icao].rows.map((x) => [`${a.name} · ${x.days}`,
                                     x.arr_local_precision == null ? "-" : `${x.arr_local_precision}% / ${x.arr_local_recall}%`,
@@ -257,7 +257,7 @@ function Body({ r }: { r: Results }) {
 
       <Section id="method" title="How I measured it">
         <ul>
-          <li>Landings and runways come from the planes&apos; own position reports. Checked against about 20,000 OpenSky arrival records per airport, the detector finds 95-97% of landings, and 99-100% of what it finds are real.</li>
+          <li>Landings and runways come from the planes&apos; own position reports. Checked against about 20,000 OpenSky arrival records per airport, the detector finds 95-97% of landings, and 99-100% of what it finds did land.</li>
           <li>Every model is tested on days it never trained on. Positions a few seconds apart are nearly identical, so a random split would make the scores look better than they are.</li>
           <li>Runway rates, wake spacing and &quot;unimpeded&quot; times are measured from the data, not taken from textbooks.</li>
           <li>The code, and a longer write-up of every number, are on <a href={REPO} target="_blank" rel="noopener noreferrer">GitHub</a>.</li>
