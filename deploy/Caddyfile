@@ -1,0 +1,5 @@
+# HTTPS (Let's Encrypt, automatic) in front of the Flive container.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	reverse_proxy flive:7860
+}

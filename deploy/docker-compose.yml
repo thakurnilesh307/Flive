@@ -1,0 +1,32 @@
+# Flive on a single always-on VM: the app plus Caddy for HTTPS.
+# Run from the repo root on the VM (deploy/vm_setup.sh does this):
+#   SITE_ADDRESS=1-2-3-4.sslip.io docker compose -f deploy/docker-compose.yml up -d --build
+name: flive
+services:
+  flive:
+    build: ..
+    restart: unless-stopped
+    env_file: ../.env          # OpenSky / ADS-B keys; vm_setup.sh creates it empty if missing
+    environment:
+      PORT: "7860"
+    expose:
+      - "7860"
+
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    depends_on:
+      - flive
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS, e.g. 1-2-3-4.sslip.io}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
