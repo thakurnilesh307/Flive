@@ -169,11 +169,18 @@ class WorldStore:
         self.last_error = None
 
     def update(self, snap, credits_remaining=None):
+        # The source sometimes lists one aircraft more than once: keep its newest row.
+        newest = {}
+        for a in snap["aircraft"]:
+            old = newest.get(a["icao24"])
+            if old is None or (a.get("last_contact") or 0) > (old.get("last_contact") or 0):
+                newest[a["icao24"]] = a
+        snap = {**snap, "aircraft": list(newest.values())}
         grid = defaultdict(list)
         for a in snap["aircraft"]:
             grid[_cell(a["lat"], a["lon"])].append(a)
         self.snapshot, self.grid = snap, dict(grid)
-        self.by_id = {a["icao24"]: a for a in snap["aircraft"]}
+        self.by_id = newest
         self.credits_remaining = credits_remaining
         self.last_error = None
 
