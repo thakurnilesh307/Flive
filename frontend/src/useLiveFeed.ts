@@ -149,8 +149,10 @@ export function useLiveFeed(): Feed {
     };
 
     const connect = () => {
+      // Same host by default; VITE_WS_URL points a separately hosted UI (Vercel, which
+      // can't proxy WebSockets) straight at the server.
       const proto = location.protocol === "https:" ? "wss" : "ws";
-      ws = new WebSocket(`${proto}://${location.host}/ws`);
+      ws = new WebSocket(import.meta.env.VITE_WS_URL || `${proto}://${location.host}/ws`);
       wsRef.current = ws;
       ws.onopen = () => {
         setConnected(true);
