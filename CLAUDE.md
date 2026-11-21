@@ -278,7 +278,13 @@ Units are SI internally (meters, m/s). Convert to ft/kt/fpm only for display.
   (or `npm run dev` on :5173 alongside the server on :8000).
 - Deployment: `Dockerfile` (+ allow-list `.dockerignore`) builds frontend and
   server, port 7860, runs as uid 1000; ~225 MB RAM. Hugging Face Docker Spaces need
-  PRO (not used); target host is a small always-on VM.
+  PRO (not used).
+- Live: https://flivemap.vercel.app (Vercel builds `frontend/`, config in
+  `frontend/vercel.json`, rewrites `/api/*` to the VM; WebSocket goes straight to the
+  VM via `VITE_WS_URL`). Server: Oracle Always Free E2.1.Micro at 129.80.140.192,
+  docker compose (`deploy/`) with Caddy on 129-80-140-192.sslip.io. Update with
+  `bash scripts/ship_vm.sh ubuntu@129.80.140.192 oracle.key` (ships git HEAD + models;
+  `oracle.key` is gitignored). If the VM's IP changes, update `frontend/vercel.json`.
   `python scripts/deploy_space.py USER/flive` uploads tracked files + the gitignored
   `data/models/*.joblib` to a Space, using `deploy/space_README.md` as its config.
   Library versions in the Dockerfile are pinned to what the models were pickled with
@@ -298,6 +304,7 @@ Units are SI internally (meters, m/s). Convert to ft/kt/fpm only for display.
    OpenSky arrivals. This is the model-vs-reality story for the blog post.
    [model + live predictions done; nightly scoring of logged predictions next]
 6. Deploy (always-on instance, not a sleeping free tier) + README with GIF.
+   [deployed: Oracle VM + Vercel; GIF next]
 
 ## How I want to work
 

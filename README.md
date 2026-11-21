@@ -5,7 +5,7 @@ arrivals/departures list and per-aircraft details. The goal is to compare what
 actually happens at Logan with an optimized landing sequence: how much time
 arrivals lose, and how much of it a scheduler could win back.
 
-> Work in progress. See the roadmap below.
+> Live at **https://flivemap.vercel.app**. Work in progress, see the roadmap below.
 
 ## How it works
 
@@ -63,7 +63,27 @@ aircraft lookup table at build time instead of shipping it. It idles at about
 
 The server has to stay running to keep polling, so hosts that only run code per
 request (Vercel, Netlify) can't host it, and free tiers that sleep after a few idle
-minutes stop the live tracking. Target: a small always-on VM (setup in progress).
+minutes stop the live tracking. The live site is split in two:
+
+- **Server: an Oracle Cloud Always Free VM** (E2.1.Micro, Ubuntu 24.04) runs the
+  container behind Caddy, which gets the HTTPS certificate on an sslip.io name
+  (`deploy/docker-compose.yml`, `deploy/Caddyfile`). Both restart on their own, and a
+  cron job deletes snapshot logs older than a week. It serves the whole site too, at
+  https://129-80-140-192.sslip.io.
+- **Pages: Vercel** builds `frontend/` (Root Directory `frontend`, settings in
+  `frontend/vercel.json`) and serves it at https://flivemap.vercel.app. It forwards
+  `/api/*` to the VM; the live feed's WebSocket goes to the VM directly
+  (`VITE_WS_URL`), since Vercel can't forward WebSockets.
+
+To update the server after a code change or a retrain, commit, then from the laptop:
+
+```bash
+bash scripts/ship_vm.sh ubuntu@129.80.140.192 oracle.key   # code (HEAD) + models, rebuild
+```
+
+`deploy/vm_setup.sh` (run by that) installs Docker, opens ports 80/443 in the VM's
+firewall and adds swap on small VMs; on Oracle the subnet's security list needs
+80 and 443 opened too. Vercel redeploys the pages on every push.
 
 `scripts/deploy_space.py USER/flive` uploads the tracked files plus the models to a
 Hugging Face Docker Space, with `deploy/space_README.md` as its config. Docker Spaces
@@ -736,7 +756,7 @@ to local features once a few days of local data exist.
 5. Landing-time model: predicted landing times and order vs. actual - model, live predictions, scoring of live predictions and the "is it landing here?" classifier done
 6. Time lost on arrival (`time_lost.py`, done); first come, first served replay and position-shift optimizer and runway choice (`scheduler.py`, done)
 7. A generic "transfer controller" model: tested (`transfer.py`): landing time transfers from day one, "is it landing here?" needs ~3 days of local data; settling-in hybrid next
-8. Always-on deployment: Docker image ready (`Dockerfile`), host being set up
+8. Always-on deployment: done (Oracle VM + Vercel, see Deploying)
 
 ## Data
 
