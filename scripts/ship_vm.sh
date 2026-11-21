@@ -18,7 +18,7 @@ ssh_=(ssh -i "$key" -o StrictHostKeyChecking=accept-new "$host")
 
 echo "== code ($(git rev-parse --short HEAD))"
 "${ssh_[@]}" 'mkdir -p ~/flive/data/models'
-git archive HEAD | "${ssh_[@]}" 'tar -x -C ~/flive'
+git -c core.autocrlf=false -c core.eol=lf archive HEAD | "${ssh_[@]}" 'tar -x -C ~/flive'
 
 echo "== models"
 tar -c data/models/*.joblib | "${ssh_[@]}" 'tar -x -C ~/flive'
