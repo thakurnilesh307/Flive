@@ -43,3 +43,6 @@ data/duplicate_logs/
 data/time_lost/
 data/scheduler/
 data/*.log
+
+# SSH keys for the deploy VM
+*.key
