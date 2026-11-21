@@ -3,7 +3,7 @@
     python scripts/export_results.py      -> frontend/public/results.json (committed)
 
 Reads the reports written by time_lost.py, scheduler.py and transfer.py (all
-gitignored, built from 20 days of history) and keeps only what the page charts, so
+gitignored, built from the imported history) and keeps only what the page charts, so
 the deployed site doesn't need the raw data. Re-run after those scripts.
 """
 import json
@@ -22,6 +22,19 @@ def load(path):
     return json.loads(path.read_text())
 
 
+def by_traffic(buckets):
+    """time_lost.py buckets hours by tens up to 60+; the page shows 0-9 .. 40+, so the
+    40, 50 and 60 buckets are merged (mean weighted by flights)."""
+    rows = [{"bucket": label, "mean_min": buckets[k]["mean_min"], "flights": buckets[k]["flights"]}
+            for k, label in TRAFFIC[:-1] if k in buckets]
+    top = [buckets[k] for k in buckets if int(k) >= 40]
+    if top:
+        n = sum(b["flights"] for b in top)
+        rows.append({"bucket": "40+", "flights": n,
+                     "mean_min": round(sum(b["mean_min"] * b["flights"] for b in top) / n, 2)})
+    return rows
+
+
 def main():
     out = {"generated": date.today().isoformat(), "airports": [], "time_lost": {}, "scheduler": {}, "transfer": {}}
     for icao, name in AIRPORTS:
@@ -31,9 +44,7 @@ def main():
             "days": t["days"], "flights": t["measured"], "mean_min": t["overall"]["mean_min"],
             "median_min": t["overall"]["median_min"], "over_5_pct": t["overall"]["over_5_min_pct"],
             "holding_pct": t["holding_pct"], "total_hours": t["total_hours_lost"],
-            "by_traffic": [{"bucket": label, "mean_min": t["by_landings_per_hour"][k]["mean_min"],
-                            "flights": t["by_landings_per_hour"][k]["flights"]}
-                           for k, label in TRAFFIC if k in t["by_landings_per_hour"]],
+            "by_traffic": by_traffic(t["by_landings_per_hour"]),
             "by_hour": [{"hour": int(h), "mean_min": v["mean_min"], "flights": v["flights"]}
                         for h, v in sorted(t["by_hour_local"].items(), key=lambda kv: int(kv[0]))],
         }

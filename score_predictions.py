@@ -1,6 +1,8 @@
 """Score the landing predictions the live server logged against what really happened.
 
     python score_predictions.py [ICAO]        (default KBOS)
+    python score_predictions.py KJFK --since 20261120_0414   only logs started then or later
+                                              (e.g. since a new model went live)
 
 The server writes every prediction it makes into its logs (`landing_at`,
 `landing_lo_at`, `landing_hi_at`, `landing_runway` on each arriving aircraft). This
@@ -133,8 +135,10 @@ def summarize(rows):
     return s
 
 
-def score(ap):
+def score(ap, since=None):
     paths = E.log_paths(ap)
+    if since:   # log names end in _YYYYMMDD_HHMM.jsonl
+        paths = [p for p in paths if Path(p).stem[-13:] >= since]
     preds, times = load_predictions(paths)
     if not preds:
         print(f"{ap.icao}: no logged predictions yet")
@@ -247,7 +251,13 @@ def show(r):
 
 
 if __name__ == "__main__":
-    ap = G.get(sys.argv[1] if len(sys.argv) > 1 else "KBOS")
-    r = score(ap)
+    args = sys.argv[1:]
+    since = None
+    if "--since" in args:
+        i = args.index("--since")
+        since = args[i + 1]
+        del args[i:i + 2]
+    ap = G.get(args[0] if args else "KBOS")
+    r = score(ap, since)
     if r:
         show(r)

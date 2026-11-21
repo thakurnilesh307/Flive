@@ -67,8 +67,8 @@ export default function ResultsPage() {
       <div className="intro">
         <h1>Model vs. reality</h1>
         <p>
-          Flive records every plane around Boston Logan, New York JFK and London Heathrow. Over about three weeks
-          that&apos;s roughly 30,000 landings. This page asks three questions of that data: how much time do arriving
+          Flive records every plane around Boston Logan, New York JFK and London Heathrow. Over about five weeks
+          that&apos;s roughly 57,000 landings. This page asks three questions of that data: how much time do arriving
           planes lose waiting their turn, could a scheduler have done better than the real controllers, and can one
           model learn to work at an airport it has never seen?
         </p>
@@ -194,10 +194,10 @@ function Body({ r }: { r: Results }) {
           </div>
         </Figure>
         <ul className="takeaways">
-          <li><b>Reordering helps:</b> the optimizer cuts first-come delay by 15-25% in busy hours, mostly by grouping heavy jets so fewer planes wait out their longer gaps.</li>
-          <li><b>Logan:</b> once it can also pick runways (it moved {r.scheduler.KBOS.runway_choice_moved_pct}% of arrivals), the optimizer edges out the real controllers in the busiest hours.</li>
-          <li><b>JFK&apos;s controllers beat every scheduler</b>, by more than a minute per arrival when it&apos;s busy. Runway choice doesn&apos;t close the gap: JFK&apos;s landing runways are already used to the full. That points to things the replay can&apos;t model, like tightening gaps in a rush.</li>
-          <li><b>Heathrow</b> is the one place the schedulers find room, about 2 minutes per arrival in its busiest hours. That&apos;s mostly the stack buffer it keeps on purpose.</li>
+          <li><b>Reordering helps:</b> the optimizer cuts first-come delay by 12-38% in busy hours, mostly by grouping heavy jets so fewer planes wait out their longer gaps.</li>
+          <li><b>Logan:</b> once it can also pick runways (it moved {r.scheduler.KBOS.runway_choice_moved_pct}% of arrivals), the optimizer edges out the real controllers in the busiest hours. In merely busy hours (30-39 landings), Logan&apos;s controllers still win.</li>
+          <li><b>JFK&apos;s controllers beat every scheduler</b>, by about two minutes per arrival when it&apos;s busiest. Runway choice doesn&apos;t close the gap: JFK&apos;s landing runways are already used to the full. That points to things the replay can&apos;t model, like tightening gaps in a rush.</li>
+          <li><b>Heathrow</b> is the one place the schedulers find room, over 2 minutes per arrival in its busiest hours. That&apos;s mostly the stack buffer it keeps on purpose.</li>
         </ul>
         <p className="caveat">
           Limits: runways that cross or sit close together are treated as independent, any delay can be absorbed, and
@@ -250,7 +250,7 @@ function Body({ r }: { r: Results }) {
         </Figure>
         <p>
           When a plane will land is physics, and it&apos;s the same everywhere: the transfer model is as good as a local
-          one from day one, and better with a few days of data. <i>Whether</i> a plane is landing here depends on the
+          one from day one, and much better than a local model with only a day of data. Only at JFK does the local model catch up, after about three days. <i>Whether</i> a plane is landing here depends on the
           neighbours (where Newark, LaGuardia and Teterboro are, and which way their traffic flows), and that&apos;s
           exactly the local knowledge the transfer model doesn&apos;t get. On day one at JFK a third of its predictions
           go to planes landing somewhere else; a local model needs about three days of watching to learn the
@@ -260,7 +260,7 @@ function Body({ r }: { r: Results }) {
 
       <Section id="method" title="How it's measured">
         <ul>
-          <li>Landings and runways come from the planes&apos; own position reports, checked against about 10,000 OpenSky arrival records per airport: 96-97% found, all of them real.</li>
+          <li>Landings and runways come from the planes&apos; own position reports, checked against about 20,000 OpenSky arrival records per airport: 95-97% found, and 99-100% of the landings found were real.</li>
           <li>All models are tested on days they never trained on, because positions seconds apart are near-duplicates and a random split would flatter them.</li>
           <li>Runway pace, wake spacing and &quot;unimpeded&quot; times are measured from the data, not assumed.</li>
           <li>The code and a longer write-up of every number are on <a href={REPO} target="_blank" rel="noopener noreferrer">GitHub</a> (README: &quot;Time lost on arrival&quot;, &quot;First come, first served vs. what really happened&quot;, &quot;The transfer controller&quot;).</li>

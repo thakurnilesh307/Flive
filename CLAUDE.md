@@ -150,23 +150,27 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   them as "rough estimate". Bundle `data/models/GLOBAL_eta.joblib`.
   `data/runways.csv` covers every airport in airports.csv (+ CONFIG).
 - `scripts/overnight.sh START END` - unattended: import days, retrain all,
-  validate, score; log in `data/overnight.log`.
+  validate, score, re-run the analysis and Results export; log in
+  `data/overnight.log`. Resume after an interruption with `FROM=<step>` (e.g.
+  `FROM=KJFK:arrival`; steps listed in the script header).
 - `score_predictions.py ICAO` - scores the predictions the live server logged
   (one per plane per 30 s) against landings `events.detect` finds in the same
   logs: error by minutes out, range coverage, runway, missed landings, false
-  arrivals by kind -> `data/scores/ICAO.json` (gitignored). First run: timing
-  0.8-1.1 min, but 26-59% of predictions were for planes that never landed here
-  (neighbouring airports, GA, overflights): `is_arrival` is the weak point.
+  arrivals by kind -> `data/scores/ICAO.json` (gitignored). `--since
+  YYYYMMDD_HHMM` scores only logs started then or later. First run (rule-based
+  `is_arrival`): 26-59% of predictions were for planes that never landed here.
+  Since the arrival model went live (Nov 20 04:14): false arrivals 377/919/526 ->
+  3/1/4 at KBOS/KJFK/EGLL, missed landings 1-2%; timing 0.9-1.2 min.
 - `arrival_model.py ICAO` - "is it landing here?" classifier (every plane within 40
   nm / below 18k ft AGL, per minute, label = landed here within 1 h; `candidate()`
   and `features()` shared with live). -> data/models/ICAO_arrival.joblib, used by
-  eta.py (falls back to is_arrival + landing_elsewhere without it). 20 days: 99%
-  precision, 90/95/96% recall at KBOS/KJFK/EGLL vs rule 46-76% precision.
+  eta.py (falls back to is_arrival + landing_elsewhere without it). 35 days: 99%
+  precision, 91/97/95% recall at KBOS/KJFK/EGLL vs rule 47-76% precision.
 - `time_lost.py ICAO` - EUROCONTROL-style additional time in the 40 nm ring:
   transit minus 20th pct of (entry sector, runway, size class); runs events.detect
-  over all history. -> data/time_lost/ICAO.csv/json (gitignored). 20 days: mean
-  2.7 / 2.2 / 4.5 min KBOS/KJFK/EGLL; rises with landings per hour; EGLL 35%
-  holding. Step 1 of the scheduler story (FCFS vs real vs optimized next).
+  over all history. -> data/time_lost/ICAO.csv/json (gitignored). 35 days: mean
+  2.7 / 2.1 / 5.0 min KBOS/KJFK/EGLL; rises with landings per hour; EGLL 39%
+  holding. Hour buckets go by tens up to 60; export_results.py merges 40+. Step 1 of the scheduler story (FCFS vs real vs optimized next).
 - `scheduler.py [ICAO..]` - FCFS replay of time_lost arrivals: earliest = 40 nm
   crossing + unimpeded; per real runway in earliest order; spacing = median real
   gap when the follower was queued (delay > 2 min), per (runway, lead size, follow
@@ -177,8 +181,9 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   Optimizer: cps_sequence() exact DP for Constrained Position Shifting (max k
   places, min total delay; state = used planes in window + last plane, Pareto on
   (delay, last time)); brute-force checked; per runway split where FCFS queue
-  empties; SHIFTS = 1,2,3. Busy hours: CPS cuts FCFS 15-25%, but real KBOS/KJFK
-  still beat CPS-3 (runway choice, compression); EGLL ~2 min room (stacks).
+  empties; SHIFTS = 1,2,3. Busy hours: CPS cuts FCFS 12-38%, but real KBOS/KJFK
+  still beat CPS-3 (runway choice, compression); EGLL ~2.3 min room (stacks).
+  With runway choice CPS-3 beats real KBOS only at 40+ landings/h (2.3 vs 2.6).
   Runway choice (with_runway_choice): may move to a runway with >= 2 real landings
   within 20 min and departures <= half of them (takeoffs() cached in
   data/scheduler/ICAO_takeoffs.csv), size class used it >= 20 times; greedy then
@@ -188,8 +193,9 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   bearing/track/cfg_*/alt_ft) trained on the other airports + first k days of the
   target vs local expert on first k days; test = target's last 10 days. Caches
   data/models/ICAO_arrival_dataset.csv.gz; -> TRANSFER_report.json. Result: ETA
-  transfers (beats local experts at 1-7 days); arrival classification doesn't
-  (JFK day 0: 65% precision; local 3 days: 98%). Next: settling-in hybrid.
+  transfers (beats every local expert at 1 day; only JFK's catches up by ~3 days);
+  arrival classification doesn't (JFK day 0: 66% precision; local 3 days: 97%).
+  Next: settling-in hybrid.
 - `events.py` - step 4 (done, offline): logs -> landing/takeoff events with
   runway (`data/events_ICAO.csv`, gitignored). Despike ground flags (airborne blips
   first), confirm 60 s, runway by heading <= 25 deg AND <= 0.35 nm from the
@@ -212,9 +218,9 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   (`is_arrival`: not climbing, not on ground in last 5 min, not helicopters),
   adds `landing_at`, `landing_lo_at`, `landing_hi_at` (unix s) to Boston
   snapshot aircraft and `runway_in_use` to the snapshot; logged. `GET
-  /api/eta/status`. Retrain after importing more history. Last (20 days,
-  leave-one-day-out): KBOS 1.19 min vs 5.51 straight line, KJFK 0.98 vs 5.83,
-  EGLL 1.22 vs 6.59. Global leave-one-area-out 1.31 pooled; destination = rule.
+  /api/eta/status`. Retrain after importing more history. Last (35 days, Oct 17 -
+  Nov 21, leave-one-day-out): KBOS 1.17 min vs 5.40 straight line, KJFK 0.93 vs
+  5.67, EGLL 1.29 vs 6.84. Global leave-one-area-out 1.31 pooled; destination = rule.
 - `train_runway.py` - per-flight runway classifiers (arrival: landing runway;
   departure: takeoff runway while taxiing), features from
   `dataset.arrival_runway_features` / `departure_runway_features` (shared with
@@ -223,7 +229,7 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   columns exist for every runway end at the airport; constant ones are dropped
   at training and live selects the bundle's feature list. Live fields:
   `landing_runway(_p)`, `takeoff_runway(_p)`; taxiing = `dataset.taxiing()` and
-  not landed in the last 20 min. Last (KBOS, 20 days): 95.6% / 95.0% vs 92.7% / 92.4% baseline.
+  not landed in the last 20 min. Last (KBOS, 35 days): 94.9% / 95.8% vs 88.8% / 93.6% baseline.
 - `explore.py` - (planned) pandas/matplotlib analysis of the JSONL logs.
 
 ## Snapshot format (do not change field names without updating all consumers)
@@ -270,6 +276,13 @@ Units are SI internally (meters, m/s). Convert to ft/kt/fpm only for display.
 - Project lives in `C:\dev\Flive` (moved out of OneDrive so node_modules and
   logs don't sync). Node 24 / npm for the frontend: `cd frontend; npm run build`
   (or `npm run dev` on :5173 alongside the server on :8000).
+- Deployment: `Dockerfile` (+ allow-list `.dockerignore`) builds frontend and
+  server, port 7860, runs as uid 1000; ~225 MB RAM. Hugging Face Docker Spaces need
+  PRO (not used); target host is a small always-on VM.
+  `python scripts/deploy_space.py USER/flive` uploads tracked files + the gitignored
+  `data/models/*.joblib` to a Space, using `deploy/space_README.md` as its config.
+  Library versions in the Dockerfile are pinned to what the models were pickled with
+  (scikit-learn 1.6.1); bump them together with a retrain.
 
 ## Roadmap
 

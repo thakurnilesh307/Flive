@@ -53,6 +53,22 @@ For frontend work with hot reload, keep the server running and in a second
 terminal run `cd frontend; npm run dev`, then open http://localhost:5173 (Vite
 forwards `/ws` to the server).
 
+## Deploying
+
+The `Dockerfile` builds the React app and runs the server in one container
+(`docker build -t flive .` then `docker run -p 7860:7860 flive` to try it locally).
+It needs the trained models in `data/models/` (gitignored), and downloads the
+aircraft lookup table at build time instead of shipping it. It idles at about
+225 MB of memory and a quarter of a CPU core.
+
+The server has to stay running to keep polling, so hosts that only run code per
+request (Vercel, Netlify) can't host it, and free tiers that sleep after a few idle
+minutes stop the live tracking. Target: a small always-on VM (setup in progress).
+
+`scripts/deploy_space.py USER/flive` uploads the tracked files plus the models to a
+Hugging Face Docker Space, with `deploy/space_README.md` as its config. Docker Spaces
+now need a Hugging Face PRO subscription, so this is kept as an option, not used.
+
 ## Results page
 
 `/results.html` ("Results" in the map's top bar) shows the findings below as charts:
@@ -309,9 +325,9 @@ waiting.
 **97% recall** (142 of 147 OpenSky arrivals found) and **100% precision** (all 142
 detected landings confirmed). The 5 misses: two touchdowns inside gaps in the old
 logs, a helicopter, a low pass and an arrival outside our data. Our touchdown time
-is a median 10 s after OpenSky's "last seen". Re-run on 18 days of history (Nov 1-18):
-96% recall / 100% precision at Logan (9,666 OpenSky arrivals), 97% / 100% at JFK
-(9,710) and 97% / 100% at Heathrow (11,146).
+is a median 10 s after OpenSky's "last seen". Re-run on 35 days of history (Oct 17 -
+Nov 21): 95% recall / 99% precision at Logan (19,048 OpenSky arrivals), 96% / 100% at
+JFK (18,862) and 97% / 100% at Heathrow (21,221).
 
 ## Landing-time model (step 5)
 
@@ -339,20 +355,21 @@ python train_runway.py KBOS            # -> data/models/KBOS_runway.joblib
 - **Test:** leave-one-day-out (positions 30 s apart are near-duplicates, so a
   random split would flatter it).
 
-Results on 20 days of Logan traffic (296,708 rows, Oct 31 - Nov 19, each day
+Results on 35 days of Logan traffic (559,167 rows, Oct 17 - Nov 20, each day
 predicted by a model that never saw it):
 
 | | overall | 5 min out | 10 min out | 20 min out | within 1 min |
 | --- | --- | --- | --- | --- | --- |
-| Straight line (distance / speed) | 5.51 min | 1.26 | 5.68 | 13.74 | 28% |
-| Straight line x fitted factor | 3.62 min | | | | |
-| **Model** | **1.19 min** | **0.34** | **1.15** | **2.70** | **65%** |
+| Straight line (distance / speed) | 5.40 min | 1.17 | 5.58 | 13.73 | 30% |
+| Straight line x fitted factor | 3.85 min | | | | |
+| **Model** | **1.17 min** | **0.36** | **1.13** | **2.57** | **65%** |
 
 The first run, on one week, scored 1.01 min overall. Tripling the data made the
 headline *worse* but the model better: at 5 and 20 minutes out it improved, and the
-straight-line baseline got worse by more (4.85 -> 5.51), so the 20-day test set is
+straight-line baseline got worse by more (4.85 -> 5.51), so the 20-day test set was
 simply harder. One held-out day scores 2.4 min on its own. A small test set flatters
-you; the 20-day number is the one to trust.
+you. Going from 20 to 35 days moved the headline only slightly (1.19 -> 1.17 min), a
+sign the number has settled.
 
 What it learned matters most: altitude (a plane 15 nm out at 10,000 ft is far
 from landing; at 2,000 ft it's nearly down), then where it is relative to the
@@ -376,15 +393,17 @@ predicted 2 to 15 minutes ahead landed 0.2 to 2.6 minutes from the prediction,
 detected: which runway an arrival will land on (rows every 30 s over its last 30
 minutes) and which runway a taxiing plane will take off from (rows every 15 s over
 its last 15 minutes of taxiing). Baseline to beat: "the runway Logan used most in
-the last 30 minutes". Leave-one-day-out, 20 days:
+the last 30 minutes". Leave-one-day-out, 35 days:
 
 | | model | baseline |
 | --- | --- | --- |
-| Landing runway | **95.6%** | 92.7% |
-| Takeoff runway (taxiing) | **95.0%** | 92.4% |
+| Landing runway | **94.9%** | 88.8% |
+| Takeoff runway (taxiing) | **95.8%** | 93.6% |
 
-(First run on 9 days: 94.6% / 91.4% vs 88.9% / 88.4%. Accuracy is highest close to
-landing or takeoff and lowest furthest out.)
+(First run on 9 days: 94.6% / 91.4% vs 88.9% / 88.4%; on 20 days 95.6% / 95.0% vs
+92.7% / 92.4%. The late-October days added more runway changes, which hurt the
+baseline more than the model. Accuracy is highest close to landing or takeoff: 97.9%
+in the last 5 minutes, 91.9% at 20-30 minutes out.)
 
 The first version only matched the baseline (88%) and was worse far out, picking
 runways nobody was using. Three changes fixed that: only runways used in the last
@@ -392,7 +411,7 @@ runways nobody was using. Three changes fixed that: only runways used in the las
 shares instead of counts, and the plane's position relative to every runway, so
 it can learn which of two active runways it's lined up for. The probability shown
 in the app is honest: when the model says over 90% (most of the time) it's right
-95-96% of the time. Live, `eta.py` adds `landing_runway`/`landing_runway_p` to
+95-97% of the time. Live, `eta.py` adds `landing_runway`/`landing_runway_p` to
 arrivals and `takeoff_runway`/`takeoff_runway_p` to planes taxiing out (not ones
 that just landed), shown in the detail panel, both Logan tabs and Ask Flive.
 
@@ -410,13 +429,13 @@ page only receives an airport's feed while the map is looking at it.
 
 | | Detection vs OpenSky | Landing time (held-out) | Straight line | Landing runway | Takeoff runway |
 | --- | --- | --- | --- | --- | --- |
-| Logan | 96% recall / 100% precision | 1.19 min | 5.51 | 95.6% (baseline 92.7%) | 95.0% (92.4%) |
-| JFK | 97% / 100% | 0.98 min | 5.83 | 91.8% (89.0%) | 98.2% (95.7%) |
-| Heathrow | 97% / 100% | 1.22 min | 6.59 | 95.3% (93.9%) | 98.8% (98.1%) |
+| Logan | 95% recall / 99% precision | 1.17 min | 5.40 | 94.9% (baseline 88.8%) | 95.8% (93.6%) |
+| JFK | 96% / 100% | 0.93 min | 5.67 | 91.8% (87.3%) | 97.2% (94.1%) |
+| Heathrow | 97% / 100% | 1.29 min | 6.84 | 95.3% (93.2%) | 98.8% (97.5%) |
 
-19-20 held-out days each (Oct 31 - Nov 19); detection checked on Nov 1-18 against
-about 10,000 OpenSky arrivals per airport. At Heathrow the takeoff-runway baseline is already ~98%: each mostly uses
-one departure runway per direction, so there's nothing left for a model to add.
+35 held-out days each (Oct 17 - Nov 21); detection checked against about 19,000-21,000
+OpenSky arrivals per airport. At Heathrow the takeoff-runway baseline is already ~98%: each mostly uses
+one departure runway per direction, so there's little left for a model to add.
 
 **Rough tier (everywhere else): `global_model.py`.** Worldwide, Flive only has
 OpenSky's 90 s snapshots and doesn't know the runway in use. This model uses only
@@ -431,17 +450,17 @@ predict London.
 
 | Area never seen in training | Global model | Straight line | Main airport, global vs its own model |
 | --- | --- | --- | --- |
-| Boston | 1.39 min | 4.54 | 1.38 vs 1.19 |
-| New York | 1.22 min | 3.37 | 1.31 vs 0.98 |
-| London | 1.40 min | 4.27 | 1.67 vs 1.22 |
+| Boston | 1.39 min | 4.46 | 1.39 vs 1.17 |
+| New York | 1.21 min | 3.29 | 1.26 vs 0.93 |
+| London | 1.41 min | 4.30 | 1.68 vs 1.29 |
 
-Trained on 1.43 million rows. So a single model with no local knowledge gets within
-about 10-30 seconds of the dedicated ones.
+Trained on 2.78 million rows (35 days). So a single model with no local knowledge gets
+within about 15-25 seconds of the dedicated ones.
 
 The weak part is *which airport* a plane is going to. A simple rule (lined up with a
 runway, otherwise pointed at the airport and on a normal ~3° descent) picks the right
-airport 68-83% of the time overall (75% on average) and 99% in the last five minutes.
-A classifier trained for this did *worse* on unseen areas (67% average), because it
+airport 70-82% of the time overall (75% on average) and 99% in the last five minutes.
+A classifier trained for this did *worse* on unseen areas (66% average), because it
 learned local habits like "the nearest big airport"; a geometry-only version came
 close (73%) and won in New York, but not overall. `global_model.py` picks whichever
 wins on each retrain. So the server uses the rule, and the page labels these
@@ -464,22 +483,25 @@ predictions out of the logs, finds the real landings in the same logs with
 `scripts/overnight.sh` runs it for every airport at the end. Report:
 `data/scores/ICAO.json`.
 
-First results (Logan Nov 18-19, about 31 hours; JFK and Heathrow 8 hours each on Nov 19;
-one prediction per plane every 30 s):
+`python score_predictions.py ICAO --since YYYYMMDD_HHMM` scores only logs started
+then or later, e.g. since a new model went live.
+
+Live results, Nov 18-21 (Logan about 3 days, JFK and Heathrow about 2; one prediction
+per plane every 30 s, 9,000-20,000 per airport):
 
 | | Landing time | Straight line | 5 / 10 / 20 min out | Likely range held | Landing runway | Real landings missed |
 | --- | --- | --- | --- | --- | --- | --- |
-| Logan | **0.83 min** | 4.59 | 0.23 / 0.70 / 1.34 | 75% | 99.1% | 2.3% |
-| JFK | **0.80 min** | 3.29 | 0.26 / 0.77 / 1.46 | 62% | 92.9% | 0% |
-| Heathrow | **1.06 min** | 4.19 | 0.15 / 0.70 / 2.26 | 83% | 97.0% | 0% |
+| Logan | **1.03 min** | 4.79 | 0.23 / 0.68 / 1.58 | 74% | 97.5% | 2.1% |
+| JFK | **0.86 min** | 4.46 | 0.28 / 0.83 / 1.35 | 62% | 91.5% | 0.6% |
+| Heathrow | **1.20 min** | 6.06 | 0.16 / 0.67 / 1.87 | 76% | 96.4% | 1.1% |
 
 "Missed" = landed without a prediction at least 5 minutes before. For planes that
-really were arriving, live accuracy is as good as the held-out test or better. JFK's
-range is too narrow live (62%, aim 80%); a few hours of data isn't enough to recalibrate it yet.
+really were arriving, live accuracy matches the held-out test. The likely range is
+too narrow live, worst at JFK (62%, aim 80%); recalibrating it on live data is open.
 
-**The real weakness: deciding who is arriving.** Many planes got a prediction and
-never landed: 342 at Logan, 808 at JFK, 507 at Heathrow, against 275 / 191 / 302 that
-did. That's 26%, 59% and 37% of all predictions. Most get their first prediction
+**The real weakness was deciding who is arriving.** In the first live logs many
+planes got a prediction and never landed: 342 at Logan, 808 at JFK, 507 at Heathrow,
+against 275 / 191 / 302 that did. That's 26%, 59% and 37% of all predictions. Most get their first prediction
 20-40 nm out and were really going to a neighbour: Bedford, Providence and Manchester
 near Boston; Newark, Islip, Teterboro and LaGuardia near JFK; Gatwick, London City
 and Luton near Heathrow. Others were light aircraft (under 140 kt) or just passing
@@ -498,12 +520,24 @@ the same rows; the threshold is set so it finds at least as many arrivals as the
 
 | | Old rule: right / found | Model: right / found | Wrong predictions per real arrival |
 | --- | --- | --- | --- |
-| Logan | 76% / 70% | **99% / 90%** | 0.32 -> 0.01 |
-| JFK | 46% / 65% | **99% / 95%** | 1.17 -> 0.01 |
-| Heathrow | 67% / 76% | **99% / 96%** | 0.50 -> 0.01 |
+| Logan | 76% / 71% | **99% / 91%** | 0.32 -> 0.01 |
+| JFK | 47% / 67% | **99% / 97%** | 1.14 -> 0.01 |
+| Heathrow | 67% / 74% | **99% / 95%** | 0.50 -> 0.01 |
 
-The live server uses it at all three airports (and falls back to the rule without a
-model file). Live re-scoring follows once there are enough new logs.
+(35 days, leave-days-out.) The live server uses it at all three airports (and falls
+back to the rule without a model file).
+
+**Live, it works.** Scoring only the logs since it went live (Nov 20 04:14 to Nov 21
+07:09, `--since 20261120_0414`) against the logs before:
+
+| | Planes wrongly predicted to land: before -> after | Real landings, after | Real landings missed, after |
+| --- | --- | --- | --- |
+| Logan | 377 -> **3** | 303 | 1.7% |
+| JFK | 919 -> **1** | 312 | 1.0% |
+| Heathrow | 526 -> **4** | 508 | 1.5% |
+
+Wrong arrivals went from more than one per real landing (five at JFK) to almost none,
+without missing more real ones.
 
 ## Time lost on arrival
 
@@ -517,23 +551,25 @@ vectoring and slowing down for sequencing. Report: `data/time_lost/ICAO.json`, o
 row per landing in `ICAO.csv` (both gitignored). It's our version on public data,
 not the official figure.
 
-20 days of history (Oct 31 - Nov 19), 9-11 thousand landings per airport:
+35 days of history (Oct 17 - Nov 21), about 18-20 thousand landings per airport:
 
 | | Mean lost | Median | 90th pct | Lose over 5 min | Holding-like turns | Total |
 | --- | --- | --- | --- | --- | --- | --- |
-| Logan | 2.7 min | 1.4 | 7.1 | 17% | 4% | 407 h |
-| JFK | 2.2 min | 1.5 | 5.4 | 12% | 1% | 344 h |
-| Heathrow | 4.5 min | 3.0 | 11.2 | 36% | 35% | 805 h |
+| Logan | 2.7 min | 1.5 | 6.9 | 18% | 3% | 791 h |
+| JFK | 2.1 min | 1.4 | 5.1 | 11% | 1% | 619 h |
+| Heathrow | 5.0 min | 3.3 | 12.7 | 40% | 39% | 1,665 h |
 
 Time lost grows with how busy the hour is (landings within 30 minutes either side):
 
 | Landings that hour | 0-9 | 10-19 | 20-29 | 30-39 | 40+ |
 | --- | --- | --- | --- | --- | --- |
-| Logan | 0.9 | 0.8 | 2.0 | 3.5 | 3.8 |
-| JFK | 1.0 | 1.2 | 2.1 | 2.6 | 3.2 |
-| Heathrow | 1.4 | 0.5 | 2.5 | 3.7 | 7.5 |
+| Logan | 0.9 | 0.9 | 2.0 | 3.4 | 3.4 |
+| JFK | 0.8 | 1.1 | 1.9 | 2.5 | 2.9 |
+| Heathrow | 1.4 | 0.7 | 3.0 | 4.3 | 8.0 |
 
-Heathrow is the outlier, by design: about a third of its arrivals fly a holding
+(The 20-day run gave nearly the same picture: Logan 2.7, JFK 2.2, Heathrow 4.5 min.)
+
+Heathrow is the outlier, by design: over a third of its arrivals fly a holding
 pattern, because it keeps a queue in the stacks so the runway never sits idle. Logan
 and JFK mostly absorb delay with vectors and speed. Heathrow's number is also an
 underestimate: when nearly every arrival queues, the 20th percentile "unimpeded"
@@ -553,17 +589,19 @@ flown and pinned real departures in place; on Logan's mixed runway 04R that star
 arrivals into a 100-minute queue, and everywhere else FCFS looked impossibly good.)
 
 Real delays also contain time that isn't sequencing (a longer route, a slower
-plane): even in quiet hours real arrivals lose 0.8 / 1.5 / 1.6 min at Logan / JFK /
+plane): even in quiet hours real arrivals lose 1.0 / 1.1 / 1.6 min at Logan / JFK /
 Heathrow, against ~0.1 for the replay. So real delay is shown minus that quiet-hour
 floor. Mean delay per arrival, minutes, by how busy the hour was:
 
 | Landings that hour | Logan: real / FCFS | JFK: real / FCFS | Heathrow: real / FCFS |
 | --- | --- | --- | --- |
-| 20-29 | 1.0 / 1.1 | **0.6** / 1.6 | **0.4** / 0.9 |
-| 30-39 | **2.7** / 3.1 | **1.2** / 3.4 | 2.2 / **2.0** |
-| 40+ | **3.0** / 4.5 | **1.5** / 3.7 | 5.4 / **4.0** |
+| 20-29 | **1.0** / 2.0 | **0.8** / 1.6 | 0.8 / 0.8 |
+| 30-39 | **2.3** / 3.8 | **1.4** / 4.4 | 2.9 / **2.1** |
+| 40+ | **2.6** / 3.4 | **1.8** / 5.9 | 5.7 / **3.9** |
 
-- **Logan and JFK controllers beat arrival order** when it's busy, JFK by about 2
+(35 days, Oct 17 - Nov 21; 43-128 hours with 40+ landings per airport.)
+
+- **Logan and JFK controllers beat arrival order** when it's busy, JFK by 3-4
   minutes per arrival. Swapping planes and using speed control to fill gaps pays off.
 - **Heathrow is the exception** in its busiest hours: its arrivals lose more than a
   naive queue would give them. That's the cost of the holding stacks. Heathrow keeps
@@ -579,18 +617,19 @@ close parallels) are treated as independent, and any delay can be absorbed. Repo
 first-come order (Constrained Position Shifting, the standard way to keep reordering
 realistic for controllers and fair to airlines), minimising total delay. It's solved
 exactly for each busy period with a dynamic programme over positions (checked
-against brute force on 300 random small cases), and takes seconds for all 20 days.
+against brute force on 300 random small cases), and takes seconds for all 35 days.
 
 Mean delay per arrival, minutes (real minus quiet-hour floor / naive / optimizer
 with up to 1, 2, 3 places):
 
 | Landings that hour | Logan | JFK | Heathrow |
 | --- | --- | --- | --- |
-| 20-29 | 1.0 / 1.1 / 1.0 / 1.0 / 1.0 | **0.6** / 1.6 / 1.4 / 1.3 / 1.3 | **0.4** / 0.9 / 0.9 / 0.8 / 0.8 |
-| 30-39 | 2.7 / 3.1 / 2.8 / 2.7 / **2.6** | **1.2** / 3.4 / 2.8 / 2.6 / 2.5 | 2.2 / 2.0 / 1.9 / 1.8 / **1.7** |
-| 40+ | **3.0** / 4.5 / 3.9 / 3.8 / 3.6 | **1.5** / 3.7 / 3.2 / 3.0 / 2.9 | 5.4 / 4.0 / 3.7 / 3.5 / **3.5** |
+| 20-29 | **1.0** / 2.0 / 1.9 / 1.8 / 1.7 | **0.8** / 1.6 / 1.3 / 1.2 / 1.2 | 0.8 / 0.8 / 0.8 / 0.8 / 0.8 |
+| 30-39 | **2.3** / 3.8 / 3.6 / 3.4 / 3.3 | **1.4** / 4.4 / 3.3 / 2.9 / 2.7 | 2.9 / 2.1 / 1.9 / 1.8 / **1.8** |
+| 40+ | **2.6** / 3.4 / 3.0 / 2.9 / 2.8 | **1.8** / 5.9 / 4.4 / 3.9 / 3.8 | 5.7 / 3.9 / 3.6 / 3.4 / **3.3** |
 
-- **Reordering helps**: 15-25% less delay than first-come in busy hours, mostly by
+- **Reordering helps**: 12-38% less delay than first-come in busy hours (most at
+  JFK, whose naive queue is the worst), mostly by
   grouping heavy jets so fewer planes sit behind their bigger wake gaps. Most of the
   gain comes from moving planes by one or two places.
 - **But real controllers at Logan and especially JFK beat even the optimizer.** They
@@ -598,7 +637,7 @@ with up to 1, 2, 3 places):
   several at once), squeezing gaps below their usual size in a rush, and running
   dependent runways together. So reordering alone is not where their skill shows; the
   next version should let the optimizer pick runways too.
-- **Heathrow is the one place an optimizer shows room**: about 2 minutes per arrival
+- **Heathrow is the one place an optimizer shows room**: about 2.3 minutes per arrival
   in its busiest hours. That is mostly the holding-stack buffer, which Heathrow keeps
   on purpose so the runway never waits.
 
@@ -613,16 +652,18 @@ with a couple of landings and "won" by landing arrivals on departure runways, JF
 
 | 40+ landings/h | Real (minus floor) | Optimizer, own runway | Optimizer + runway choice | Arrivals moved |
 | --- | --- | --- | --- | --- |
-| Logan | 3.0 | 3.6 | **2.7** | 6.7% |
-| JFK | **1.5** | 2.9 | 3.0 | 1.9% |
-| Heathrow | 5.4 | 3.5 | **3.4** | 0.9% |
+| Logan | 2.6 | 2.8 | **2.3** | 6.9% |
+| JFK | **1.8** | 3.8 | 3.9 | 2.3% |
+| Heathrow | 5.7 | 3.3 | **3.3** | 1.6% |
 
-Runway choice explains Logan: with it, the optimizer edges out the real controllers.
-It doesn't explain JFK, whose arrival runways are already used to the full. What's
-left there is either real skill the replay can't model (tighter gaps in a rush,
-dependent runway operations) or a weakness of the comparison: JFK's quiet-hour floor
-(1.5 min) may not apply to busy hours if quiet-hour approaches are longer by design.
-This data can't tell those apart.
+Runway choice explains Logan's busiest hours: with it, the optimizer edges out the
+real controllers (2.3 vs 2.6 min). But only there: at 30-39 landings an hour, Logan's
+controllers still win (2.3 vs 3.1 with runway choice). It doesn't explain JFK at all,
+whose arrival runways are already used to the full. What's left is either real skill
+the replay can't model (tighter gaps in a rush, dependent runway operations) or a
+weakness of the comparison: the quiet-hour floor (1.1 min at JFK) may not apply to
+busy hours if quiet-hour approaches are longer by design. This data can't tell those
+apart. All of this held from 20 to 35 days of data.
 
 Caveat on the comparison: the quiet-hour floor assumes non-sequencing delay (routes,
 slower planes) is the same in busy hours, and the runway pace comes from medians, so
@@ -648,29 +689,32 @@ job). Report: `data/models/TRANSFER_report.json`.
 
 | Days of local data | Logan: local / transfer | JFK: local / transfer | Heathrow: local / transfer |
 | --- | --- | --- | --- |
-| 0 | - / **1.32** | - / **1.40** | - / **1.84** |
-| 1 | 1.82 / **1.30** | 1.74 / **1.37** | 2.26 / **1.61** |
-| 3 | 1.34 / **1.22** | 1.47 / **1.18** | 3.23 / **1.56** |
-| 7 | 1.69 / **1.25** | 1.34 / **1.15** | 1.56 / **1.48** |
-| 10 | 1.44 / - | 1.27 / - | - |
+| 0 | - / **1.34** | - / **1.48** | - / **1.81** |
+| 1 | 1.91 / **1.33** | 2.15 / **1.49** | 3.36 / **1.65** |
+| 3 | 1.32 / **1.29** | **1.12** / 1.14 | 1.69 / **1.49** |
+| 7 | 1.46 / **1.30** | **1.06** / 1.09 | 1.54 / **1.40** |
+| 10 | 1.16 / - | 1.01 / - | 1.46 / - |
 
-**Is it landing here?** (predictions right / arrivals found):
+**Is it landing here?** (predictions right / arrivals found, local vs transfer):
 
-| Days of local data | Logan: local / transfer | JFK: local / transfer | Heathrow: local / transfer |
+| Days of local data | Logan | JFK | Heathrow |
 | --- | --- | --- | --- |
-| 0 | - / 98% / 78% | - / 65% / 71% | - / 85% / 82% |
-| 1 | 97% / 91% vs 98% / 80% | 86% / 89% vs 74% / 82% | 98% / 98% vs 92% / 91% |
-| 3 | 97% / 97% vs 98% / 92% | **98% / 95%** vs 88% / 94% | 98% / 95% vs 93% / 94% |
-| 7 | 97% / 98% vs 98% / 94% | 98% / 95% vs 89% / 95% | 98% / 99% vs 96% / 99% |
+| 0 | - vs 98% / 78% | - vs 66% / 73% | - vs 84% / 83% |
+| 1 | 94% / 94% vs 98% / 80% | 91% / 97% vs 71% / 82% | 97% / 92% vs 90% / 91% |
+| 3 | 96% / 95% vs 98% / 88% | **97% / 99%** vs 89% / 96% | 98% / 99% vs 92% / 96% |
+| 7 | 97% / 98% vs 97% / 92% | 97% / 99% vs 94% / 97% | 98% / 100% vs 95% / 99% |
 
-(Old hand-written rule on the same airports: 76% / 70%, 46% / 65%, 67% / 76%.)
+(Old hand-written rule on the same test days: 74% / 75%, 46% / 69%, 66% / 76%. 35 days
+of history, so the 10 test days and up to 7 training days per airport are all real
+days; the 20-day run gave the same picture.)
 
 The two tasks go opposite ways:
 
 - **Landing time transfers.** From day one the generic model is about as good as a
-  local expert, and with 1-7 days of local data it beats every local expert: they
-  memorize the few days they saw (Heathrow's 3-day expert is off by 3.2 min), while
-  the other airports' data keeps the generic one steady. It's physics.
+  local expert, and with one day of local data it beats every local expert by a wide
+  margin: they memorize the few days they saw (Heathrow's 1-day expert is off by 3.4
+  min), while the other airports' data keeps the generic one steady. It's physics.
+  Only JFK's local expert catches up, after about 3 days (1.12 vs 1.14 min).
 - **"Is it landing here?" doesn't.** On day one at JFK a third of the generic model's
   predictions go to planes landing elsewhere, and with the other airports' data it
   stays below a local model trained on just 3 days. Who is coming to you depends on
@@ -692,7 +736,7 @@ to local features once a few days of local data exist.
 5. Landing-time model: predicted landing times and order vs. actual - model, live predictions, scoring of live predictions and the "is it landing here?" classifier done
 6. Time lost on arrival (`time_lost.py`, done); first come, first served replay and position-shift optimizer and runway choice (`scheduler.py`, done)
 7. A generic "transfer controller" model: tested (`transfer.py`): landing time transfers from day one, "is it landing here?" needs ~3 days of local data; settling-in hybrid next
-8. Always-on deployment
+8. Always-on deployment: Docker image ready (`Dockerfile`), host being set up
 
 ## Data
 
