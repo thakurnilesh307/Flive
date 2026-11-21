@@ -1,8 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Logo } from "../components/icons";
+import TopNav, { REPO } from "../about/TopNav";
 import { DataTable, GroupedBars, Legend, LineChart, type Series } from "./charts";
 
-const REPO = "https://github.com/thakurnilesh307/Flive";
 const AIRPORT_COLOR = ["var(--s1)", "var(--s2)", "var(--s3)"];
 
 interface Results {
@@ -31,12 +30,12 @@ function Section({ id, title, children }: { id: string; title: string; children:
   return <section id={id} className="doc-section"><h2>{title}</h2>{children}</section>;
 }
 
-function Figure({ title, sub, legend, children, table }: {
-  title: string; sub?: string; legend?: ReactNode; children: ReactNode; table: ReactNode;
+function Figure({ n, title, sub, legend, children, table }: {
+  n: number; title: string; sub?: string; legend?: ReactNode; children: ReactNode; table: ReactNode;
 }) {
   return (
     <figure className="fig">
-      <figcaption><h3>{title}</h3>{sub && <p>{sub}</p>}</figcaption>
+      <figcaption><span className="fig-num">Figure {n}</span><h3>{title}</h3>{sub && <p>{sub}</p>}</figcaption>
       {legend}
       {children}
       {table}
@@ -55,29 +54,22 @@ export default function ResultsPage() {
 
   return (
     <div className="about results">
-      <header className="about-top">
-        <a className="about-brand" href="/"><Logo size={30} /><span>Flive</span></a>
-        <nav className="about-top-links">
-          <a href="/about.html">About</a>
-          <a href={REPO} target="_blank" rel="noopener noreferrer">GitHub</a>
-          <a className="btn-primary small" href="/">Back to the map</a>
-        </nav>
-      </header>
+      <TopNav here="results" />
 
       <div className="intro">
-        <h1>Model vs. reality</h1>
+        <h1>Results</h1>
         <p>
           Flive records every plane around Boston Logan, New York JFK and London Heathrow. Over about five weeks
-          that&apos;s roughly 57,000 landings. This page asks three questions of that data: how much time do arriving
-          planes lose waiting their turn, could a scheduler have done better than the real controllers, and can one
-          model learn to work at an airport it has never seen?
+          that adds up to roughly 57,000 landings. I used them to answer three questions: how much time do arriving
+          planes lose waiting for their turn, could a scheduler have done better than the real controllers, and can a
+          model trained at some airports work at one it has never seen?
         </p>
-        {r && <p className="meta">Data: {r.time_lost.KBOS.days[0]} to {r.time_lost.KBOS.days[1]}, from free public ADS-B feeds. Updated {r.generated}.</p>}
+        {r && <p className="meta">Data from {r.time_lost.KBOS.days[0]} to {r.time_lost.KBOS.days[1]}, from free public ADS-B feeds. Last updated {r.generated}.</p>}
       </div>
 
       <main className="results-body">
         {err && <p className="note">Couldn&apos;t load the results. Try reloading the page.</p>}
-        {!r && !err && <p className="note">Loading the results…</p>}
+        {!r && !err && <p className="note">Loading...</p>}
         {r && <Body r={r} />}
       </main>
     </div>
@@ -118,22 +110,28 @@ function Body({ r }: { r: Results }) {
     <>
       <Section id="time-lost" title="How much time arrivals lose">
         <p>
-          For every landing I measure the time from crossing 40 nautical miles out to touchdown, and compare it with
-          how long similar flights take with nobody in the way: same direction, same runway, same size of plane. The
-          difference is time spent holding, being steered around, or slowed down to wait for a gap. It&apos;s the same
-          idea Europe&apos;s air traffic performance reviews use.
+          For every landing I measured the time from crossing 40 nautical miles out to touchdown, and compared it
+          with how long similar flights take when nobody is in the way (same direction, same runway, same size of
+          plane). The difference is time spent holding, being vectored around, or slowed down to wait for a gap.
+          Eurocontrol&apos;s performance reviews measure arrival delay the same way.
         </p>
-        <div className="tiles">
-          {aps.map((a, i) => (
-            <div className="tile" key={a.icao}>
-              <div className="tile-label"><span className="key key-line" style={{ background: AIRPORT_COLOR[i] }} aria-hidden="true" />{a.name}</div>
-              <div className="tile-value">{tl[a.icao].mean_min.toFixed(1)} min</div>
-              <div className="tile-sub">lost per arrival on average · {Math.round(tl[a.icao].total_hours)} hours over {tl[a.icao].flights.toLocaleString()} landings · {Math.round(tl[a.icao].over_5_pct)}% lose more than 5 min</div>
-            </div>
-          ))}
-        </div>
+        <table className="summary">
+          <thead><tr><th>Airport</th><th>Landings</th><th>Lost per arrival</th><th>Median</th><th>Over 5 min</th><th>Total</th></tr></thead>
+          <tbody>
+            {aps.map((a) => (
+              <tr key={a.icao}>
+                <td>{a.name}</td>
+                <td>{tl[a.icao].flights.toLocaleString()}</td>
+                <td>{tl[a.icao].mean_min.toFixed(1)} min</td>
+                <td>{tl[a.icao].median_min.toFixed(1)} min</td>
+                <td>{Math.round(tl[a.icao].over_5_pct)}%</td>
+                <td>{Math.round(tl[a.icao].total_hours)} h</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
 
-        <Figure title="The busier the hour, the more each arrival loses"
+        <Figure n={1} title="The busier the hour, the more each arrival loses"
                 sub="Average minutes lost per arrival, by how many planes landed within 30 minutes either side"
                 legend={<Legend series={trafficSeries} kind="line" />}
                 table={<DataTable caption="Minutes lost per arrival by landings that hour"
@@ -142,7 +140,7 @@ function Body({ r }: { r: Results }) {
           <LineChart x={traffic} series={trafficSeries} unit=" min" xTitle="Landings that hour" label="Minutes lost per arrival rises with traffic at all three airports" />
         </Figure>
 
-        <Figure title="Through the day"
+        <Figure n={2} title="Time lost through the day"
                 sub="Average minutes lost per arrival by local hour of landing (hours with fewer than 20 landings left out)"
                 legend={<Legend series={hourSeries} kind="line" />}
                 table={<DataTable caption="Minutes lost per arrival by local hour"
@@ -151,30 +149,28 @@ function Body({ r }: { r: Results }) {
           <LineChart x={hours.map(hourLabel)} series={hourSeries} unit=" min" xTitle="Local time" label="Minutes lost per arrival by hour of day" />
         </Figure>
         <p>
-          Heathrow stands out: about {Math.round(tl.EGLL.holding_pct)}% of its arrivals fly a holding pattern, against{" "}
-          {Math.round(tl.KBOS.holding_pct)}% at Logan and {Math.round(tl.KJFK.holding_pct)}% at JFK. That&apos;s on purpose.
-          Heathrow keeps a queue of planes circling in its &quot;stacks&quot; so the runways never sit idle, trading minutes
-          per flight for the most landings an hour. Logan and JFK mostly absorb delay with turns and speed changes.
+          Heathrow is the outlier. About {Math.round(tl.EGLL.holding_pct)}% of its arrivals fly a holding pattern, compared
+          with {Math.round(tl.KBOS.holding_pct)}% at Logan and {Math.round(tl.KJFK.holding_pct)}% at JFK, and that&apos;s
+          deliberate: Heathrow keeps planes circling in its &quot;stacks&quot; so the runways are never idle, giving up a
+          few minutes per flight to land as many planes an hour as possible. Logan and JFK mostly absorb delay with
+          turns and speed changes instead.
         </p>
       </Section>
 
       <Section id="scheduler" title="Could a scheduler do better?">
         <p>
-          I replayed every real arrival through three schedulers, each landing the same planes on the same runways at
-          the pace those runways really manage when planes are queued:
+          I replayed every real arrival through three schedulers. Each one lands the same planes on the same
+          runways, at the rate those runways actually manage when there&apos;s a queue. First come, first served lands
+          planes in the order they could arrive, each as soon as the runway allows. The optimizer can also swap
+          planes by up to three places to cut the total delay (solved exactly). The last one can additionally move a
+          plane to another runway that was in use for landings at the time.
         </p>
-        <ul>
-          <li><b>First come, first served:</b> planes land in the order they could arrive, each as soon as the runway allows.</li>
-          <li><b>Optimizer:</b> planes may swap up to three places to cut the total delay (solved exactly, not guessed).</li>
-          <li><b>Optimizer + runway choice:</b> it may also move a plane to another runway that was being used for landings at the time.</li>
-        </ul>
         <p>
-          Real delays also include time that has nothing to do with the queue, like a longer route or a slower plane.
-          So &quot;what really happened&quot; has the delay real arrivals have even in quiet hours taken off, to compare like
-          with like.
+          Real delay also includes time that has nothing to do with the queue, like a longer route or a slower plane,
+          so for &quot;what really happened&quot; I subtracted the delay arrivals have even in quiet hours.
         </p>
-        <Figure title="Minutes lost per arrival, real vs. three schedulers"
-                sub="By how many planes landed that hour; the same scale in all three panels"
+        <Figure n={3} title="Minutes lost per arrival, real vs. three schedulers"
+                sub="By how many planes landed that hour. All three panels use the same scale."
                 legend={<Legend series={schedNames.map((n, i) => ({ name: n, color: schedColor[i] }))} kind="bar" />}
                 table={<DataTable caption="Minutes lost per arrival, real (adjusted) vs. schedulers"
                                   head={["Airport · landings that hour", ...schedNames]}
@@ -194,28 +190,28 @@ function Body({ r }: { r: Results }) {
           </div>
         </Figure>
         <ul className="takeaways">
-          <li><b>Reordering helps:</b> the optimizer cuts first-come delay by 12-38% in busy hours, mostly by grouping heavy jets so fewer planes wait out their longer gaps.</li>
-          <li><b>Logan:</b> once it can also pick runways (it moved {r.scheduler.KBOS.runway_choice_moved_pct}% of arrivals), the optimizer edges out the real controllers in the busiest hours. In merely busy hours (30-39 landings), Logan&apos;s controllers still win.</li>
-          <li><b>JFK&apos;s controllers beat every scheduler</b>, by about two minutes per arrival when it&apos;s busiest. Runway choice doesn&apos;t close the gap: JFK&apos;s landing runways are already used to the full. That points to things the replay can&apos;t model, like tightening gaps in a rush.</li>
-          <li><b>Heathrow</b> is the one place the schedulers find room, over 2 minutes per arrival in its busiest hours. That&apos;s mostly the stack buffer it keeps on purpose.</li>
+          <li>Reordering helps. In busy hours the optimizer cuts first-come delay by 12-38%, mostly by grouping heavy jets so fewer planes have to wait out the longer gaps behind them.</li>
+          <li>At Logan, once the optimizer can also pick runways (it moved {r.scheduler.KBOS.runway_choice_moved_pct}% of arrivals), it slightly beats the real controllers in the busiest hours. In hours with 30-39 landings the controllers still win.</li>
+          <li>JFK&apos;s controllers beat every scheduler, by about two minutes per arrival at the busiest times. Runway choice doesn&apos;t help because JFK&apos;s landing runways are already fully used. My guess is they do things the replay can&apos;t model, like tightening the gaps during a rush.</li>
+          <li>Heathrow is the only place the schedulers find real room, over 2 minutes per arrival in its busiest hours, and most of that is the stack buffer it keeps on purpose.</li>
         </ul>
         <p className="caveat">
-          Limits: runways that cross or sit close together are treated as independent, any delay can be absorbed, and
-          the quiet-hour adjustment assumes a route takes as long in a rush as in a quiet hour. The replay is a yardstick,
-          not a claim that a computer should run the tower.
+          Caveats: runways that cross or sit close together are treated as independent, any amount of delay can be
+          absorbed, and the quiet-hour adjustment assumes a route takes as long in a rush as in a quiet hour. The
+          replay is a yardstick, not an argument that a computer should run the tower.
         </p>
       </Section>
 
       <Section id="transfer" title="One model for any airport?">
         <p>
-          A controller who moves from Boston to JFK brings general skills and has to learn the layout and the
-          neighbours. I tested whether a model can do the same: train it only on things measured relative to the
-          airport (distance, height, speed, position against the runway in use) at the <i>other</i> airports, then give
-          it 0 to 7 days of the new one. The local model only ever sees the new airport. Both are tested on the same last
-          10 days.
+          A controller who moves from Boston to JFK brings general skills but has to learn the new layout and the
+          neighbouring airports. I wanted to see if a model could do the same. The transfer model is trained on the
+          other two airports, using only things measured relative to the airport (distance, height, speed, position
+          against the runway in use), and then gets 0 to 7 days of the new one. The local model only ever sees the
+          new airport. Both are tested on the same final 10 days.
         </p>
-        <Figure title="Landing time: the physics transfers"
-                sub="Average error in minutes; lower is better"
+        <Figure n={4} title="Landing time: the general model works from day one"
+                sub="Average error in minutes (lower is better)"
                 legend={<Legend series={tSeries(aps[0].icao, "eta_local", "eta_transfer")} kind="line" />}
                 table={<DataTable caption="Landing-time error (minutes) by days of the new airport's data"
                                   head={["Airport · days of local data", "Local model", "Transfer model"]}
@@ -230,8 +226,8 @@ function Body({ r }: { r: Results }) {
             ))}
           </div>
         </Figure>
-        <Figure title="Is it landing here? The neighbourhood doesn't"
-                sub="Share of predictions that were right (%); higher is better. The scale starts at 50%"
+        <Figure n={5} title="Is it landing here? That part needs local data"
+                sub="Share of arrival predictions that were right (higher is better). The scale starts at 50%."
                 legend={<Legend series={tSeries(aps[0].icao, "arr_local_precision", "arr_transfer_precision")} kind="line" />}
                 table={<DataTable caption="Predictions right / real arrivals found (%), by days of the new airport's data"
                                   head={["Airport · days of local data", "Local: right / found", "Transfer: right / found"]}
@@ -249,21 +245,22 @@ function Body({ r }: { r: Results }) {
           </div>
         </Figure>
         <p>
-          When a plane will land is physics, and it&apos;s the same everywhere: the transfer model is as good as a local
-          one from day one, and much better than a local model with only a day of data. Only at JFK does the local model catch up, after about three days. <i>Whether</i> a plane is landing here depends on the
-          neighbours (where Newark, LaGuardia and Teterboro are, and which way their traffic flows), and that&apos;s
-          exactly the local knowledge the transfer model doesn&apos;t get. On day one at JFK a third of its predictions
-          go to planes landing somewhere else; a local model needs about three days of watching to learn the
-          neighbourhood. Much like a new controller.
+          When a plane will land is mostly physics, which is the same everywhere, so the transfer model is as good
+          as a local one from the first day and much better than a local model with only a day of data. At JFK the
+          local model catches up after about three days. Whether a plane is landing here at all depends on the
+          neighbours (where Newark, LaGuardia and Teterboro are and which way their traffic flows), which is exactly
+          what the transfer model never saw. On day one at JFK about a third of its arrival calls are for planes
+          landing somewhere else, and a local model needs about three days of data to learn the area. Not that
+          different from a new controller.
         </p>
       </Section>
 
-      <Section id="method" title="How it's measured">
+      <Section id="method" title="How I measured it">
         <ul>
-          <li>Landings and runways come from the planes&apos; own position reports, checked against about 20,000 OpenSky arrival records per airport: 95-97% found, and 99-100% of the landings found were real.</li>
-          <li>All models are tested on days they never trained on, because positions seconds apart are near-duplicates and a random split would flatter them.</li>
-          <li>Runway pace, wake spacing and &quot;unimpeded&quot; times are measured from the data, not assumed.</li>
-          <li>The code and a longer write-up of every number are on <a href={REPO} target="_blank" rel="noopener noreferrer">GitHub</a> (README: &quot;Time lost on arrival&quot;, &quot;First come, first served vs. what really happened&quot;, &quot;The transfer controller&quot;).</li>
+          <li>Landings and runways come from the planes&apos; own position reports. Checked against about 20,000 OpenSky arrival records per airport, the detector finds 95-97% of landings, and 99-100% of what it finds are real.</li>
+          <li>Every model is tested on days it never trained on. Positions a few seconds apart are nearly identical, so a random split would make the scores look better than they are.</li>
+          <li>Runway rates, wake spacing and &quot;unimpeded&quot; times are measured from the data, not taken from textbooks.</li>
+          <li>The code, and a longer write-up of every number, are on <a href={REPO} target="_blank" rel="noopener noreferrer">GitHub</a>.</li>
         </ul>
       </Section>
     </>

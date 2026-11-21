@@ -1,4 +1,4 @@
-import { Logo, SearchIcon, CloseIcon, SparkIcon, InfoIcon, SunIcon, MoonIcon, ChartIcon } from "./icons";
+import { SearchIcon, CloseIcon } from "./icons";
 import { localTime } from "../format";
 
 interface Props {
@@ -10,7 +10,7 @@ interface Props {
   chatOpen: boolean;
   onToggleChat: () => void;
   askEnabled: boolean;
-  /** airport at the middle of the map (when zoomed in), shown where KBOS used to be */
+  /** airport at the middle of the map (when zoomed in) */
   place: { code: string; name: string } | null;
   theme: "dark" | "light";
   onToggleTheme: () => void;
@@ -19,23 +19,23 @@ interface Props {
 export default function TopBar({ query, onQuery, onSubmit, live, now, chatOpen, onToggleChat, askEnabled, place, theme, onToggleTheme }: Props) {
   return (
     <header className="topbar">
-      <div className="brand">
-        <Logo size={34} />
-        <span>Flive</span>
-      </div>
+      <a className="brand" href="/">
+        <b>FLIVE</b>
+        <span>live arrivals at BOS, JFK and LHR</span>
+      </a>
 
       <form className="search" role="search" onSubmit={(e) => { e.preventDefault(); onSubmit(); }}>
-        <SearchIcon size={18} />
+        <SearchIcon size={15} />
         <input
           value={query}
           onChange={(e) => onQuery(e.target.value)}
-          placeholder="Search flights, airlines, airports…"
+          placeholder="Callsign, airline or airport"
           aria-label="Search flights and airports"
           maxLength={40}
         />
         {query && (
           <button type="button" className="icon-btn ghost" onClick={() => onQuery("")} aria-label="Clear search">
-            <CloseIcon size={16} />
+            <CloseIcon size={14} />
           </button>
         )}
       </form>
@@ -43,28 +43,23 @@ export default function TopBar({ query, onQuery, onSubmit, live, now, chatOpen, 
       <div className="topbar-right">
         <div className={`live ${live ? "on" : ""}`} aria-live="polite">
           <span className="dot" />
-          <span className="live-text">{live ? "Live" : "Reconnecting"}</span>
-          <span className="live-time">· {localTime(now)}</span>
+          <span className="live-text">{live ? "live" : "reconnecting"}</span>
+          <span className="live-time">{localTime(now)}</span>
         </div>
         {askEnabled && (
-          <button className={`ask-btn ${chatOpen ? "active" : ""}`} onClick={onToggleChat} aria-pressed={chatOpen}>
-            <SparkIcon size={17} /><span>Ask Flive</span>
+          <button className={`text-btn ${chatOpen ? "active" : ""}`} onClick={onToggleChat} aria-pressed={chatOpen}>
+            Ask
           </button>
         )}
+        <a className="text-btn" href="/results.html">Results</a>
+        <a className="text-btn" href="/about.html">About</a>
         <button
-          className="icon-btn theme-btn"
+          className="text-btn"
           onClick={onToggleTheme}
           aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          title={theme === "dark" ? "Light mode" : "Dark mode"}
         >
-          {theme === "dark" ? <SunIcon size={18} /> : <MoonIcon size={18} />}
+          {theme === "dark" ? "Light" : "Dark"}
         </button>
-        <a className="about-link" href="/results.html" aria-label="Results: model vs. reality">
-          <ChartIcon size={17} /><span>Results</span>
-        </a>
-        <a className="about-link" href="/about.html" aria-label="About Flive">
-          <InfoIcon size={17} /><span>About</span>
-        </a>
         {place && <div className="airport-pill" title={`Map is centred near ${place.name}`}>{place.code}</div>}
       </div>
     </header>

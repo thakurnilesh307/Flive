@@ -2,13 +2,13 @@ import type { Derived } from "../status";
 import { operatorFor } from "../airlines";
 import { flightLabel, fmtAlt, fmtDist, fmtSpeed, minsUntil } from "../format";
 import { describePosition, useAirports, type Airport } from "../airports";
-import { ChevronIcon, PlaneGlyph } from "./icons";
+import { ChevronIcon } from "./icons";
 import StatusPill from "./StatusPill";
 import AirlineBadge from "./AirlineBadge";
 
 function AirlineCell({ d }: { d: Derived }) {
   const op = operatorFor(d.a.callsign, d.a.registration, d.a.operator, d.a.operator_icao);
-  return <span className="airline-cell"><AirlineBadge op={op} size={22} />{op.name}</span>;
+  return <span className="airline-cell"><AirlineBadge op={op} size={18} />{op.name}</span>;
 }
 
 export type Tab = "arrivals" | "departures" | "inview";
@@ -35,10 +35,10 @@ interface Props {
   serverNow: number;
 }
 
-const TABS: { id: Tab; label: string; rotate: number }[] = [
-  { id: "arrivals", label: "arrivals", rotate: 120 },
-  { id: "departures", label: "departures", rotate: 30 },
-  { id: "inview", label: "In view", rotate: 75 },
+const TABS: { id: Tab; label: string }[] = [
+  { id: "arrivals", label: "arrivals" },
+  { id: "departures", label: "departures" },
+  { id: "inview", label: "In view" },
 ];
 
 export default function FlightTable({ tab, onTab, tabs, airportName, counts, rows, note, searching, airports, onAirport, selectedId, onSelect, open, onToggle, serverNow }: Props) {
@@ -57,7 +57,6 @@ export default function FlightTable({ tab, onTab, tabs, airportName, counts, row
               className={`tab ${tab === t.id ? "active" : ""}`}
               onClick={() => { onTab(t.id); if (!open) onToggle(); }}
             >
-              <PlaneGlyph size={18} rotate={t.rotate} />
               {t.id === "inview" ? t.label : `${airportName ?? ""} ${t.label}`.trim()} <em>{counts[t.id].toLocaleString("en-US")}</em>
             </button>
           ))
@@ -89,7 +88,7 @@ export default function FlightTable({ tab, onTab, tabs, airportName, counts, row
                 >
                   <td className="strong">{ap.code}</td>
                   <td colSpan={5}>{ap.name}{ap.city && ap.city !== ap.name ? <span className="muted"> · {ap.city}</span> : null}</td>
-                  <td className="muted">Airport · go there</td>
+                  <td className="muted">airport, click to go there</td>
                 </tr>
               ))}
               {rows.map((d) => (

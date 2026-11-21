@@ -7,12 +7,12 @@ const hasLogoCode = (code: string) => /^[A-Z]{3}$/.test(code) && !noLogo.has(cod
 
 /**
  * The airline's real logo (served and cached by our own server at /api/logo/ICAO),
- * falling back to a coloured square with the code when there isn't one.
+ * falling back to a plain tinted square with the code when there isn't one.
  */
 export default function AirlineBadge({ op, size = 48, className = "" }: { op: Operator; size?: number; className?: string }) {
   const [failed, setFailed] = useState(false);
   const showLogo = !failed && hasLogoCode(op.code) && op.name !== "Unknown operator";
-  const style = { width: size, height: size, borderRadius: Math.round(size * 0.29) } as React.CSSProperties;
+  const style = { width: size, height: size } as React.CSSProperties;
 
   if (showLogo) {
     return (

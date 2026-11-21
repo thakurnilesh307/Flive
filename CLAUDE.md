@@ -37,7 +37,7 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   exponential backoff on 429 and errors), WebSocket broadcast, serves the
   built frontend from `frontend/dist` (mounted last so `/ws` wins).
 - `frontend/` - React + TypeScript (Vite) + MapLibre GL only (Leaflet removed).
-  OpenFreeMap styles (`dark` recolored navy in `src/basemap.ts`, `positron` for
+  OpenFreeMap styles (`dark` recolored slate in `src/basemap.ts`, `positron` for
   light mode; CARTO needs a key),
   globe projection when zoomed out. Aircraft are GPU symbol layers
   (`local-planes` = Boston, redrawn ~30 fps; `world-planes` = world, 4 fps,
@@ -57,9 +57,13 @@ OpenSky /flights/arrival + /departure --(nightly)--> ground truth for validation
   bump v if the row format changes: it's cached a day); Logan tabs/stats only
   when the map is within 80 nm of KBOS at zoom >= 7. Search also finds
   airports and flies there; the top-bar pill is the airport under the map. Never put provider text into HTML strings (hover
-  tips use Popup.setText; KBOS marker is static markup). Brand: hexagon logo in
-  `src/components/icons.tsx` + `public/favicon.svg`. Themes: dark (default,
-  OpenFreeMap `dark` recoloured navy) and light (`positron`), toggle in the top
+  tips use Popup.setText; KBOS marker is static markup). Look (Nov 2026 revamp,
+  on purpose not "AI-polished"): IBM Plex Sans/Mono (Serif for About/Results body,
+  `src/fonts*.ts`), slate greys + one blue accent (#4c9be8 dark / #1f5fae light),
+  flat solid panels, 3 px radius, no gradients/glass/glow/pulsing, text links
+  instead of icon buttons, mono for callsigns and numbers; wordmark "FLIVE" with a
+  blue square, favicon `public/favicon.svg`. About/Results share `about/TopNav.tsx`.
+  Themes: dark (default, OpenFreeMap `dark` recoloured slate) and light (`positron`), toggle in the top
   bar, `src/theme.ts` (system default, choice in localStorage), CSS overrides
   under `[data-theme="light"]`. Switching calls setStyle; MapView's
   `style.load` handler re-adds the plane image, sources and layers each time.

@@ -50,13 +50,13 @@ const FOLLOW_ZOOM = 11;       // clicking a plane zooms in at least this far
 const FLY_IN_MS = 900;        // how long the zoom-in to a clicked plane takes
 const VIEW_REPORT_MAX_MS = 1500; // while following, the map moves every frame: still report the view this often   // corrections bigger than this (~18 nm) are real jumps: snap
 const STYLES = {
-  dark: "https://tiles.openfreemap.org/styles/dark",       // recoloured navy in basemap.ts
+  dark: "https://tiles.openfreemap.org/styles/dark",       // recoloured slate grey in basemap.ts
   light: "https://tiles.openfreemap.org/styles/positron",
 };
 // Aircraft and trail colours per theme (planes are one white SDF image, recoloured here).
 const PLANE_COLORS = {
-  dark: { sel: "#cfe8ff", ground: "#7b8ba6", air: "#5aa8ff", haloSel: "rgba(61,139,255,0.95)", halo: "rgba(61,139,255,0.45)", trail: "#4da3ff" },
-  light: { sel: "#0b3b8c", ground: "#8592a6", air: "#1d6ae5", haloSel: "rgba(29,106,229,0.55)", halo: "rgba(255,255,255,0.95)", trail: "#1d6ae5" },
+  dark: { sel: "#4c9be8", ground: "#717a85", air: "#e3e7ec", haloSel: "rgba(15,19,24,0.95)", halo: "rgba(15,19,24,0.85)", trail: "#4c9be8" },
+  light: { sel: "#1f5fae", ground: "#8a929c", air: "#17202a", haloSel: "rgba(248,249,251,0.95)", halo: "rgba(248,249,251,0.9)", trail: "#1f5fae" },
 };
 type FC = FeatureCollection<Geometry>;
 
@@ -247,7 +247,7 @@ export default function MapView(props: Props) {
         "icon-color": ["case", ["get", "sel"], c.sel, ["get", "ground"], c.ground, c.air],
         "icon-halo-color": ["case", ["get", "sel"], c.haloSel, c.halo],
         "icon-halo-width": ["case", ["get", "sel"], 3, ["get", "ground"], 0, 1.2],
-        "icon-halo-blur": ["case", ["get", "sel"], 2.5, 1.5],
+        "icon-halo-blur": 0,
         "icon-opacity": ["case", ["get", "dim"], 0.18, ["get", "stale"], 0.4, 1],
       };
       map.addLayer({ id: "world-planes", type: "symbol", source: "world", layout: planeLayout, paint: planePaint });

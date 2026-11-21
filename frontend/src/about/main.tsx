@@ -1,7 +1,8 @@
 import { StrictMode } from "react";
 import { applyTheme, initialTheme } from "../theme";
 import { createRoot } from "react-dom/client";
-import "@fontsource-variable/inter";
+import "../fonts";
+import "../fonts-serif";
 import "./about.css";
 import About from "./About";
 

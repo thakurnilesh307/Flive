@@ -4,6 +4,9 @@ import react from "@vitejs/plugin-react";
 
 // `npm run dev` serves the UI on :5173 and forwards the live feed and API to
 // the FastAPI server on :8000, so both can run side by side during development.
+// FLIVE_API=https://129-80-140-192.sslip.io points it at a deployed server instead.
+const api = process.env.FLIVE_API ?? "http://127.0.0.1:8000";
+
 export default defineConfig({
   plugins: [react()],
   build: {
@@ -19,8 +22,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/ws": { target: "ws://127.0.0.1:8000", ws: true },
-      "/api": { target: "http://127.0.0.1:8000" },
+      "/ws": { target: api.replace(/^http/, "ws"), ws: true, changeOrigin: true },
+      "/api": { target: api, changeOrigin: true },
     },
   },
 });

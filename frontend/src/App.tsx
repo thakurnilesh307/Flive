@@ -84,7 +84,11 @@ export default function App() {
     return out.sort(byDistance);
   }, [snapshot, airportFeeds]);
   // Worldwide aircraft in view (server already removed the ones the Boston feed covers).
-  const worldDerived = useMemo(() => (world?.aircraft ?? []).map(deriveWorld), [world]);
+  const worldDerived = useMemo(() => {
+    // One row per aircraft, and none the airport feeds already show.
+    const seen = new Set(derived.map((d) => d.a.icao24));
+    return (world?.aircraft ?? []).filter((a) => !seen.has(a.icao24) && (seen.add(a.icao24), true)).map(deriveWorld);
+  }, [world, derived]);
   const selected = derived.find((d) => d.a.icao24 === selectedId)
     ?? worldDerived.find((d) => d.a.icao24 === selectedId) ?? null;
   const serverNow = now / 1000 + clockSkew;
